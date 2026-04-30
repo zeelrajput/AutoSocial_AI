@@ -1,0 +1,33 @@
+2026-04-17 09:46:09,670 - INFO - Starting LinkedIn post
+2026-04-17 09:48:27,508 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:48:53,017 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:49:16,983 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:49:19,881 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:49:40,107 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:50:03,956 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:50:45,219 - INFO - Starting LinkedIn post
+2026-04-17 09:51:16,126 - ERROR - Fatal error: Message: 
+Stacktrace:
+	chromedriver!GetHandleVerifier [0x7ff7b59d0245+146d5]
+	chromedriver!GetHandleVerifier [0x7ff7b59d02b0+14740]
+	chromedriver!(No symbol) [0x7ff7b573d7cd]
+	chromedriver!(No symbol) [0x7ff7b5796c4e]
+	chromedriver!(No symbol) [0x7ff7b5796f5c]
+	chromedriver!(No symbol) [0x7ff7b57e7cc7]
+	chromedriver!(No symbol) [0x7ff7b57e4818]
+	chromedriver!(No symbol) [0x7ff7b5789018]
+	chromedriver!(No symbol) [0x7ff7b5789f03]
+	chromedriver!GetHandleVerifier [0x7ff7b5ce58f9+329d89]
+	chromedriver!GetHandleVerifier [0x7ff7b5cdfe46+3242d6]
+	chromedriver!GetHandleVerifier [0x7ff7b5d030b2+347542]
+	chromedriver!GetHandleVerifier [0x7ff7b59ed3d5+31865]
+	chromedriver!GetHandleVerifier [0x7ff7b59f600c+3a49c]
+	chromedriver!GetHandleVerifier [0x7ff7b59d9634+1dac4]
+	chromedriver!GetHandleVerifier [0x7ff7b59d97e6+1dc76]
+	chromedriver!GetHandleVerifier [0x7ff7b59be2f7+2787]
+	KERNEL32!BaseThreadInitThunk [0x7ffa7e5ee8d7+17]
+	ntdll!RtlUserThreadStart [0x7ffa8056c3fc+2c]
+
+2026-04-17 09:54:37,614 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:54:44,839 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.
+2026-04-17 09:54:48,044 - INFO - D:\blockchain_internshipe\Autosocial_ai\automation_engine\platforms\linkedin\post.py changed, reloading.

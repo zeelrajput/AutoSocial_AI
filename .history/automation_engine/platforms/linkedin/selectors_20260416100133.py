@@ -1,0 +1,5 @@
+# open start-post model/button
+
+START_POST_SELECTORS = [
+        "button.share-box-feed-entry_trigger"
+]
