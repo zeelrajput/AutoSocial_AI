@@ -1,0 +1,492 @@
+import time
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+
+from automation_engine.common.click_helper import safe_click
+from automation_engine.common.type_helper import type_like_human
+from automation_engine.common.screenshot_helper import save_screenshot
+from automation_engine.common.human_behavior import medium_pause
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SELECTORS
+# Keep textbox selectors RELATIVE to the modal.
+# Do NOT include div[role='dialog'] in selectors used with modal.find_elements()
+# ──────────────────────────────────────────────────────────────────────────────
+
+START_POST_SELECTORS = [
+    "button[aria-label*='Create a post']",
+    "button[aria-label*='Start a post']",
+    "a[href*='/post/new/']",
+    "a[href*='create-post']",
+    "button.share-box-feed-entry__trigger",
+    "div.share-box-feed-entry__top-bar button",
+    "button.artdeco-button",
+]
+
+START_POST_XPATHS = [
+    "//button[contains(., 'Create a post')]",
+    "//button[contains(., 'Start a post')]",
+    "//button[contains(@aria-label, 'Create a post')]",
+    "//button[contains(@aria-label, 'Start a post')]",
+    "//a[contains(., 'Create a post')]",
+    "//a[contains(@href, '/post/new/')]",
+    "//span[contains(., 'Create a post')]/ancestor::a[1]",
+    "//span[contains(., 'Create a post')]/ancestor::button[1]",
+]
+
+TEXTBOX_SELECTORS = [
+    "div[role='textbox']",
+    "div[contenteditable='true']",
+    "[contenteditable='true']",
+    "div[aria-multiline='true']",
+    "p[data-placeholder]",
+    "div.ql-editor",
+]
+
+TEXTBOX_XPATHS = [
+    ".//*[@role='textbox']",
+    ".//*[@contenteditable='true']",
+    ".//*[@aria-multiline='true']",
+    ".//p[@data-placeholder]",
+    ".//*[contains(@class,'ql-editor')]",
+]
+
+POST_BUTTON_SELECTORS = [
+    "button[aria-label='Post']",
+    "button.share-actions__primary-action",
+    ".share-actions__primary-action",
+    "div.share-actions button[type='submit']",
+    "footer button[aria-label='Post']",
+]
+
+POST_BUTTON_XPATHS = [
+    "//button[@aria-label='Post']",
+    "//button[normalize-space(.)='Post']",
+    "//span[normalize-space(.)='Post']/ancestor::button[1]",
+    "//div[@role='dialog']//button[normalize-space(.)='Post']",
+    "//div[@role='dialog']//button[@aria-label='Post']",
+    "//button[contains(@class,'share-actions__primary-action')]",
+]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _wait_clickable(driver, by, value, timeout=10):
+    return WebDriverWait(driver, timeout).until(
+        EC.element_to_be_clickable((by, value))
+    )
+
+
+def _wait_present(driver, by, value, timeout=10):
+    return WebDriverWait(driver, timeout).until(
+        EC.presence_of_element_located((by, value))
+    )
+
+
+def _is_visible(element):
+    try:
+        return element.is_displayed() and element.is_enabled()
+    except Exception:
+        return False
+
+
+def _find_first_clickable_css(driver, selectors, timeout=10):
+    for selector in selectors:
+        try:
+            element = _wait_clickable(driver, By.CSS_SELECTOR, selector, timeout)
+            print(f"LinkedIn clickable CSS matched: {selector}")
+            return element
+        except Exception:
+            continue
+    return None
+
+
+def _find_first_clickable_xpath(driver, selectors, timeout=10):
+    for selector in selectors:
+        try:
+            element = _wait_clickable(driver, By.XPATH, selector, timeout)
+            print(f"LinkedIn clickable XPath matched: {selector}")
+            return element
+        except Exception:
+            continue
+    return None
+
+
+def _js_click(driver, element):
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
+        time.sleep(0.7)
+        driver.execute_script("arguments[0].click();", element)
+        return True
+    except Exception as e:
+        print(f"JS click failed: {e}")
+        return False
+
+
+def _safe_element_click(driver, element):
+    try:
+        result = safe_click(driver, element)
+        if result:
+            return True
+    except Exception as e:
+        print(f"safe_click failed: {e}")
+
+    try:
+        element.click()
+        return True
+    except Exception as e:
+        print(f"element.click failed: {e}")
+
+    return _js_click(driver, element)
+
+
+def _find_start_post_via_js(driver):
+    try:
+        element = driver.execute_script("""
+            const allElements = document.querySelectorAll(
+                'button, a, div[role="button"], div[tabindex], span, div'
+            );
+
+            for (const el of allElements) {
+                const text = (el.innerText || el.textContent || '').trim();
+                const aria = el.getAttribute('aria-label') || '';
+                const placeholder = el.getAttribute('placeholder') || el.getAttribute('aria-placeholder') || '';
+
+                if (
+                    text.includes('Create a post') ||
+                    text.includes('Start a post') ||
+                    aria.includes('Create a post') ||
+                    aria.includes('Start a post') ||
+                    placeholder.includes('Create a post') ||
+                    placeholder.includes('Start a post')
+                ) {
+                    return el;
+                }
+            }
+
+            return (
+                document.querySelector('a[href*="/post/new/"]') ||
+                document.querySelector('a[href*="create-post"]') ||
+                document.querySelector('button.share-box-feed-entry__trigger') ||
+                document.querySelector('div.share-box-feed-entry__top-bar button') ||
+                null
+            );
+        """)
+        if element:
+            print("LinkedIn create/start post trigger found via JavaScript DOM search")
+        return element
+    except Exception as e:
+        print(f"JS start-post search failed: {e}")
+        return None
+
+
+def _wait_for_modal(driver, timeout=12):
+    modal_selectors = [
+        "div[role='dialog']",
+        "div[aria-modal='true']",
+        "div.share-creation-state",
+        "div.share-box-v2",
+        "div.share-modal",
+        "div.share-creation-state__main-editor",
+    ]
+
+    print("Waiting for LinkedIn post composer modal...")
+    for selector in modal_selectors:
+        try:
+            modal = _wait_present(driver, By.CSS_SELECTOR, selector, timeout)
+            print(f"Modal detected via: {selector}")
+            return modal
+        except Exception:
+            continue
+
+    print("Modal wait timed out")
+    return None
+
+
+def _find_textbox_in_modal(driver, modal):
+    print("Finding LinkedIn textbox inside modal...")
+
+    # CSS inside modal
+    for selector in TEXTBOX_SELECTORS:
+        try:
+            elements = modal.find_elements(By.CSS_SELECTOR, selector)
+            for el in elements:
+                if _is_visible(el):
+                    print(f"LinkedIn textbox matched via CSS: {selector}")
+                    return el
+        except Exception:
+            continue
+
+    # XPath inside modal
+    for selector in TEXTBOX_XPATHS:
+        try:
+            elements = modal.find_elements(By.XPATH, selector)
+            for el in elements:
+                if _is_visible(el):
+                    print(f"LinkedIn textbox matched via XPath: {selector}")
+                    return el
+        except Exception:
+            continue
+
+    # JS inside modal
+    print("CSS/XPath textbox search failed — trying JavaScript DOM search...")
+    try:
+        textbox = driver.execute_script("""
+            const modal = document.querySelector(
+                'div[role="dialog"], div[aria-modal="true"], div.share-creation-state, div.share-box-v2'
+            );
+            if (!modal) return null;
+
+            const selectors = [
+                '[role="textbox"]',
+                '[contenteditable="true"]',
+                '[aria-multiline="true"]',
+                'p[data-placeholder]',
+                '.ql-editor'
+            ];
+
+            for (const sel of selectors) {
+                const nodes = modal.querySelectorAll(sel);
+                for (const el of nodes) {
+                    const style = window.getComputedStyle(el);
+                    const visible =
+                        style.display !== 'none' &&
+                        style.visibility !== 'hidden' &&
+                        el.offsetParent !== null;
+                    if (visible) return el;
+                }
+            }
+
+            return null;
+        """)
+        if textbox:
+            print("LinkedIn textbox found via JavaScript DOM search")
+        return textbox
+    except Exception as e:
+        print(f"JS textbox search failed: {e}")
+        return None
+
+
+def _type_into_textbox(driver, textbox, text):
+    # Method 1
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", textbox)
+        time.sleep(0.8)
+        _safe_element_click(driver, textbox)
+        time.sleep(0.8)
+
+        try:
+            textbox.send_keys(Keys.CONTROL, "a")
+            textbox.send_keys(Keys.BACKSPACE)
+        except Exception:
+            pass
+
+        try:
+            type_like_human(textbox, text)
+            print("Text typed via type_like_human")
+            return True
+        except Exception as e:
+            print(f"type_like_human failed: {e}")
+
+        textbox.send_keys(text)
+        print("Text typed via send_keys")
+        return True
+    except Exception as e:
+        print(f"Direct typing failed: {e}")
+
+    # Method 2
+    try:
+        ActionChains(driver).move_to_element(textbox).click().pause(1).send_keys(text).perform()
+        print("Text typed via ActionChains")
+        return True
+    except Exception as e:
+        print(f"ActionChains typing failed: {e}")
+
+    # Method 3
+    try:
+        driver.execute_script("""
+            arguments[0].focus();
+            arguments[0].innerText = arguments[1];
+            arguments[0].dispatchEvent(new InputEvent('input', { bubbles: true }));
+            arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+            arguments[0].dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+        """, textbox, text)
+        print("Text inserted via JavaScript")
+        return True
+    except Exception as e:
+        print(f"JS text insertion failed: {e}")
+
+    return False
+
+
+def _find_post_button(driver):
+    print("Finding LinkedIn post button...")
+
+    post_button = _find_first_clickable_css(driver, POST_BUTTON_SELECTORS, timeout=10)
+    if post_button:
+        return post_button
+
+    post_button = _find_first_clickable_xpath(driver, POST_BUTTON_XPATHS, timeout=10)
+    if post_button:
+        return post_button
+
+    try:
+        post_button = driver.execute_script("""
+            const modal = document.querySelector('div[role="dialog"], div[aria-modal="true"]') || document;
+
+            const candidates = modal.querySelectorAll('button, [role="button"]');
+            for (const el of candidates) {
+                const text = (el.innerText || el.textContent || '').trim();
+                const aria = el.getAttribute('aria-label') || '';
+                const disabled = el.disabled || el.getAttribute('aria-disabled') === 'true';
+
+                if (!disabled && (text === 'Post' || aria === 'Post')) {
+                    return el;
+                }
+            }
+            return null;
+        """)
+        if post_button:
+            print("LinkedIn post button found via JavaScript DOM search")
+        return post_button
+    except Exception as e:
+        print(f"JS post-button search failed: {e}")
+        return None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN
+# ──────────────────────────────────────────────────────────────────────────────
+
+def post_to_linkedin(driver, post):
+    """
+    post.caption is required
+    Returns:
+        {"success": bool, "message": str}
+    """
+    try:
+        caption = getattr(post, "caption", None) or ""
+        if not caption.strip():
+            return {"success": False, "message": "Caption is empty for LinkedIn post."}
+
+        # Step 1
+        print("Opening LinkedIn feed page...")
+        driver.get("https://www.linkedin.com/feed/")
+        medium_pause()
+        time.sleep(5)
+
+        driver.execute_script("window.scrollTo(0, 0);")
+        time.sleep(1)
+
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, "main"))
+            )
+        except Exception:
+            pass
+
+        time.sleep(2)
+
+        # Step 2
+        print("Finding 'Start a post' button...")
+        start_post_btn = _find_first_clickable_css(driver, START_POST_SELECTORS, timeout=8)
+
+        if not start_post_btn:
+            start_post_btn = _find_first_clickable_xpath(driver, START_POST_XPATHS, timeout=8)
+
+        if not start_post_btn:
+            print("CSS/XPath failed — trying JavaScript DOM search...")
+            start_post_btn = _find_start_post_via_js(driver)
+
+        if not start_post_btn:
+            screenshot = save_screenshot(driver, prefix="linkedin_create_post_not_found")
+            return {
+                "success": False,
+                "message": f"LinkedIn 'Start a post' button not found. Screenshot: {screenshot}"
+            }
+
+        if not _safe_element_click(driver, start_post_btn):
+            screenshot = save_screenshot(driver, prefix="linkedin_create_post_click_failed")
+            return {
+                "success": False,
+                "message": f"Failed to click LinkedIn 'Start a post' button. Screenshot: {screenshot}"
+            }
+
+        print("LinkedIn 'Start a post' button clicked")
+
+        # Step 3
+        modal = _wait_for_modal(driver, timeout=12)
+        if not modal:
+            screenshot = save_screenshot(driver, prefix="linkedin_modal_not_found")
+            return {
+                "success": False,
+                "message": f"LinkedIn modal not found. Screenshot: {screenshot}"
+            }
+
+        medium_pause()
+        time.sleep(2)
+
+        # Step 4
+        textbox = _find_textbox_in_modal(driver, modal)
+        if not textbox:
+            try:
+                print("Modal HTML preview:")
+                print((modal.get_attribute("outerHTML") or "")[:3000])
+            except Exception:
+                pass
+
+            screenshot = save_screenshot(driver, prefix="linkedin_textbox_not_found")
+            return {
+                "success": False,
+                "message": f"LinkedIn textbox not found. Screenshot: {screenshot}"
+            }
+
+        # Step 5
+        if not _type_into_textbox(driver, textbox, caption):
+            screenshot = save_screenshot(driver, prefix="linkedin_typing_failed")
+            return {
+                "success": False,
+                "message": f"Failed to type caption into LinkedIn textbox. Screenshot: {screenshot}"
+            }
+
+        print("LinkedIn caption typed")
+        medium_pause()
+        time.sleep(2)
+
+        # Step 6
+        post_button = _find_post_button(driver)
+        if not post_button:
+            screenshot = save_screenshot(driver, prefix="linkedin_post_button_not_found")
+            return {
+                "success": False,
+                "message": f"LinkedIn Post button not found. Screenshot: {screenshot}"
+            }
+
+        if not _safe_element_click(driver, post_button):
+            screenshot = save_screenshot(driver, prefix="linkedin_post_button_click_failed")
+            return {
+                "success": False,
+                "message": f"Failed to click LinkedIn Post button. Screenshot: {screenshot}"
+            }
+
+        print("LinkedIn Post button clicked")
+        time.sleep(5)
+
+        screenshot = save_screenshot(driver, prefix="linkedin_post_success")
+        return {
+            "success": True,
+            "message": f"Post published successfully on LinkedIn. Screenshot: {screenshot}"
+        }
+
+    except Exception as e:
+        screenshot = save_screenshot(driver, prefix="linkedin_post_error")
+        return {
+            "success": False,
+            "message": f"{str(e)} | Screenshot: {screenshot}"
+        }

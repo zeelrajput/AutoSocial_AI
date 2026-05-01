@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual env
+venv/
+
+# Django
+db.sqlite3
+media/
+
+# Environment
+.env
+
+# Agent files
+agent_config.json
+
+# Chrome profile
+chrome_profile/
+AutoSocialAI/
+
+# Screenshots
+screenshots/
+
+# Build / dist
+build/
+dist/
+*.spec
+
+# Celery
+celerybeat-schedule*

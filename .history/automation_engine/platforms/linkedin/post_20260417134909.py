@@ -1,0 +1,508 @@
+import time
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
+from automation_engine.common.click_helper import safe_click
+from automation_engine.common.screenshot_helper import save_screenshot
+from automation_engine.common.human_behavior import medium_pause
+from automation_engine.platforms.linkedin.selectors import (
+    START_POST_SELECTORS,
+    POST_BUTTON_SELECTORS,
+)
+
+
+def close_linkedin_popups(driver):
+    popup_xpaths = [
+        "//button[@aria-label='Dismiss']",
+        "//button[@aria-label='Close']",
+        "//button[contains(@class,'artdeco-modal__dismiss')]",
+        "//button[.//span[normalize-space()='Not now']]",
+        "//button[.//span[normalize-space()='Got it']]",
+        "//button[.//span[normalize-space()='Skip']]",
+    ]
+
+    for xpath in popup_xpaths:
+        try:
+            elements = driver.find_elements(By.XPATH, xpath)
+            for el in elements:
+                try:
+                    if el.is_displayed() and el.is_enabled():
+                        driver.execute_script("arguments[0].click();", el)
+                        time.sleep(1)
+                        print("Closed popup using:", xpath)
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+
+def click_start_post_button(driver, button):
+    """Try multiple click strategies including dispatching React-compatible events."""
+    try:
+        driver.execute_script("""
+            const el = arguments[0];
+            el.scrollIntoView({block: 'center'});
+            
+            // Dispatch mousedown + mouseup + click for React synthetic events
+            ['mousedown', 'mouseup', 'click'].forEach(eventType => {
+                el.dispatchEvent(new MouseEvent(eventType, {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                }));
+            });
+        """, button)
+        print("Dispatched React-compatible click events")
+        return True
+    except Exception as e:
+        print("React click dispatch failed:", e)
+        return False
+
+
+def find_visible_dialogs(driver):
+    dialogs = []
+
+    css_candidates = [
+        "div[role='dialog']",
+        "div.artdeco-modal",
+    ]
+
+    for selector in css_candidates:
+        try:
+            elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            print(f"Checking dialog selector: {selector} -> found {len(elements)} elements")
+            for el in elements:
+                try:
+                    if el.is_displayed():
+                        dialogs.append(el)
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    print("Visible dialogs count:", len(dialogs))
+    return dialogs
+
+
+def find_linkedin_textbox_in_container(container):
+    css_candidates = [
+        "div.ql-editor",
+        "div[role='textbox']",
+        "div[contenteditable='true']",
+        "textarea",
+        "p",
+    ]
+
+    for selector in css_candidates:
+        try:
+            elements = container.find_elements(By.CSS_SELECTOR, selector)
+            print(f"Checking textbox selector inside dialog: {selector} -> found {len(elements)} elements")
+            for el in elements:
+                try:
+                    if not el.is_displayed():
+                        continue
+
+                    tag_name = (el.tag_name or "").lower()
+                    contenteditable = (el.get_attribute("contenteditable") or "").strip().lower()
+                    role = (el.get_attribute("role") or "").strip().lower()
+                    cls = (el.get_attribute("class") or "").strip().lower()
+                    placeholder = (el.get_attribute("data-placeholder") or "").strip().lower()
+                    aria_label = (el.get_attribute("aria-label") or "").strip().lower()
+                    text = (el.text or "").strip().lower()
+
+                    if tag_name == "textarea":
+                        print("Textbox found using textarea")
+                        return el
+
+                    if (
+                        contenteditable == "true"
+                        or role == "textbox"
+                        or "ql-editor" in cls
+                        or placeholder
+                        or "textbox" in aria_label
+                        or "editor" in aria_label
+                    ):
+                        print("Textbox found using dialog container selector:", selector)
+                        return el
+
+                    if tag_name in ["div", "p"] and ("write" in text or "share" in text or "talk about" in text):
+                        print("Possible textbox-like element found:", selector)
+                        return el
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    return None
+
+
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+def wait_for_linkedin_composer_v2(driver, timeout=20):
+    """
+    Polls for the composer using WebDriverWait instead of static sleeps.
+    Checks for dialog, inline editor, and placeholder text.
+    """
+    COMPOSER_SELECTORS = [
+        # Standard modal dialog
+        (By.CSS_SELECTOR, "div[role='dialog'] div[contenteditable='true']"),
+        (By.CSS_SELECTOR, "div[role='dialog'] div.ql-editor"),
+        (By.CSS_SELECTOR, "div[role='dialog'] div[role='textbox']"),
+        # Inline / no-modal editor (LinkedIn sometimes skips dialog)
+        (By.CSS_SELECTOR, "div.ql-editor[contenteditable='true']"),
+        (By.CSS_SELECTOR, "div[contenteditable='true'][data-placeholder]"),
+        (By.CSS_SELECTOR, "div[role='textbox']"),
+        # Overlay/drawer style
+        (By.CSS_SELECTOR, "div.share-creation-state__placeholder"),
+        (By.XPATH, "//*[@data-placeholder and @contenteditable='true']"),
+        (By.XPATH, "//*[contains(@data-placeholder,'talk about')]"),
+        (By.XPATH, "//*[contains(@data-placeholder,'share')]"),
+        (By.XPATH, "//*[contains(@data-placeholder,'Write')]"),
+        # Aria-based
+        (By.CSS_SELECTOR, "[aria-label='Text editor for creating content']"),
+        (By.XPATH, "//div[@aria-label and @contenteditable='true']"),
+    ]
+
+    print("Waiting for LinkedIn composer to appear...")
+
+    end_time = time.time() + timeout
+    attempt = 0
+
+    while time.time() < end_time:
+        attempt += 1
+        print(f"Composer wait attempt #{attempt} ({int(end_time - time.time())}s left)")
+
+        for by, selector in COMPOSER_SELECTORS:
+            try:
+                elements = driver.find_elements(by, selector)
+                for el in elements:
+                    try:
+                        if el.is_displayed():
+                            print(f"✅ Composer found: [{by}] {selector}")
+                            print(f"   tag={el.tag_name}, "
+                                  f"role={el.get_attribute('role')}, "
+                                  f"ce={el.get_attribute('contenteditable')}, "
+                                  f"class={el.get_attribute('class')[:60] if el.get_attribute('class') else ''}")
+                            return el
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        # Also check via JS for any visible contenteditable
+        try:
+            js_editor = driver.execute_script("""
+                return Array.from(document.querySelectorAll('[contenteditable="true"]'))
+                    .find(el => {
+                        if (!el.offsetParent) return false;  // not visible
+                        const rect = el.getBoundingClientRect();
+                        return rect.width > 50 && rect.height > 20;
+                    }) || null;
+            """)
+            if js_editor:
+                print("✅ Composer found via JS bounding-rect check")
+                return js_editor
+        except Exception:
+            pass
+
+        time.sleep(0.8)
+
+    print("❌ Composer not found after timeout")
+    return None
+
+def type_into_linkedin_editor(driver, textbox, text):
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", textbox)
+        time.sleep(1)
+
+        # first click
+        try:
+            safe_click(driver, textbox)
+        except Exception:
+            try:
+                textbox.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();", textbox)
+
+        time.sleep(1)
+
+        # if clicked element is only placeholder/container,
+        # get active element after click
+        try:
+            active = driver.switch_to.active_element
+            if active and active.is_displayed():
+                textbox = active
+                print("Using active element as textbox")
+        except Exception:
+            pass
+
+        # try focus
+        try:
+            driver.execute_script("arguments[0].focus();", textbox)
+        except Exception:
+            pass
+
+        time.sleep(0.5)
+
+        # clear if possible
+        try:
+            textbox.send_keys(Keys.CONTROL + "a")
+            textbox.send_keys(Keys.DELETE)
+            time.sleep(0.3)
+        except Exception:
+            pass
+
+        # normal typing
+        try:
+            for ch in text:
+                textbox.send_keys(ch)
+                time.sleep(0.03)
+            print("Caption typed using send_keys")
+            return True
+        except Exception as e:
+            print("send_keys failed:", str(e))
+
+        # action-chain fallback
+        try:
+            from selenium.webdriver.common.action_chains import ActionChains
+            ActionChains(driver).move_to_element(textbox).click().pause(0.5).send_keys(text).perform()
+            print("Caption typed using ActionChains")
+            return True
+        except Exception as e:
+            print("ActionChains failed:", str(e))
+
+        # JS fallback
+        try:
+            driver.execute_script("""
+                const el = arguments[0];
+                const text = arguments[1];
+
+                el.click();
+                el.focus();
+
+                if (document.activeElement && document.activeElement !== el) {
+                    document.activeElement.focus();
+                }
+
+                const target = document.activeElement || el;
+
+                if ('value' in target) {
+                    target.value = text;
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                    target.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+
+                target.innerHTML = '';
+                target.textContent = text;
+                target.dispatchEvent(new InputEvent('input', {
+                    bubbles: true,
+                    data: text,
+                    inputType: 'insertText'
+                }));
+                return true;
+            """, textbox, text)
+
+            print("Caption typed using JS fallback")
+            return True
+        except Exception as e:
+            print("JS typing failed:", str(e))
+
+        return False
+
+    except Exception as e:
+        print("type_into_linkedin_editor error:", str(e))
+        return False
+    
+def find_post_button(driver, dialog=None):
+    search_root = dialog if dialog is not None else driver
+
+    for selector in POST_BUTTON_SELECTORS:
+        try:
+            local_selector = selector.replace("div[role='dialog'] ", "")
+            elements = search_root.find_elements(By.CSS_SELECTOR, local_selector)
+            for btn in elements:
+                try:
+                    if btn.is_displayed() and btn.is_enabled():
+                        print("Post button found using CSS:", selector)
+                        return btn
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    xpath_candidates = [
+        ".//button[contains(@class,'share-actions__primary-action')]",
+        ".//button[@aria-label='Post']",
+        ".//button[contains(@aria-label,'Post')]",
+        ".//span[normalize-space()='Post']/ancestor::button[1]",
+        "//button[contains(., 'Post')]",
+    ]
+
+    for xpath in xpath_candidates:
+        try:
+            elements = search_root.find_elements(By.XPATH, xpath)
+            for btn in elements:
+                try:
+                    if btn.is_displayed() and btn.is_enabled():
+                        print("Post button found using XPath:", xpath)
+                        return btn
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    return None
+
+
+def post_to_linkedin(driver, post):
+    try:
+        driver.get("https://www.linkedin.com/feed/")
+        time.sleep(10)
+        medium_pause()
+
+        try:
+            driver.refresh()
+            print("LinkedIn feed page refreshed")
+            time.sleep(6)
+        except Exception:
+            pass
+
+        medium_pause()
+
+        print("Current URL:", driver.current_url)
+        print("Page title:", driver.title)
+
+        try:
+            body_preview = driver.execute_script("return document.body.innerText.slice(0, 2000);")
+            print("Page text preview:", body_preview)
+        except Exception:
+            pass
+
+        try:
+            driver.execute_script("window.scrollTo(0, 0);")
+            time.sleep(1)
+        except Exception:
+            pass
+
+        close_linkedin_popups(driver)
+
+        start_post_button = find_start_post_button(driver)
+        if not start_post_button:
+            screenshot = save_screenshot(driver, prefix="linkedin_start_post_not_found")
+            return {
+                "success": False,
+                "message": f"Start post button not found. Screenshot: {screenshot}"
+            }
+
+        try:
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                start_post_button
+            )
+            time.sleep(1)
+
+            clicked = safe_click(driver, start_post_button)
+            if not clicked:
+                try:
+                    start_post_button.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", start_post_button)
+                    print("Start post clicked using JavaScript fallback")
+
+            print("LinkedIn 'Start a post' trigger clicked")
+        except Exception as e:
+            screenshot = save_screenshot(driver, prefix="linkedin_start_post_click_failed")
+            return {
+                "success": False,
+                "message": f"Start post click failed: {str(e)}. Screenshot: {screenshot}"
+            }
+
+        time.sleep(2)
+
+        for i in range(5):
+            print(f"Waiting for editor render... {i + 1}")
+            time.sleep(1)
+
+        print("After click URL:", driver.current_url)
+        print("After click title:", driver.title)
+
+        dialog, textbox = wait_for_linkedin_composer(driver, timeout=12)
+
+        if not textbox:
+            screenshot = save_screenshot(driver, prefix="linkedin_composer_not_opened")
+            return {
+                "success": False,
+                "message": f"LinkedIn composer opened visually but textbox was not detected. Screenshot: {screenshot}"
+            }
+
+        try:
+            outer_html = driver.execute_script("return arguments[0].outerHTML;", textbox)
+            print("Textbox outerHTML:", outer_html[:1000] if outer_html else "None")
+        except Exception:
+            pass
+
+        typed = type_into_linkedin_editor(driver, textbox, post.caption)
+        if not typed:
+            screenshot = save_screenshot(driver, prefix="linkedin_typing_failed")
+            return {
+                "success": False,
+                "message": f"Typing failed. Screenshot: {screenshot}"
+            }
+
+        time.sleep(2)
+        medium_pause()
+
+        post_button = find_post_button(driver, dialog=dialog if dialog else driver)
+        if not post_button:
+            post_button = find_post_button(driver)
+
+        if not post_button:
+            screenshot = save_screenshot(driver, prefix="linkedin_post_button_not_found")
+            return {
+                "success": False,
+                "message": f"LinkedIn post button not found. Screenshot: {screenshot}"
+            }
+
+        try:
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                post_button
+            )
+            time.sleep(1)
+
+            clicked = safe_click(driver, post_button)
+            if not clicked:
+                try:
+                    post_button.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", post_button)
+                    print("Post button clicked using JavaScript")
+
+            print("Post published on LinkedIn")
+            medium_pause()
+
+            return {
+                "success": True,
+                "message": "Post published on LinkedIn"
+            }
+
+        except Exception as e:
+            screenshot = save_screenshot(driver, prefix="linkedin_post_button_click_failed")
+            return {
+                "success": False,
+                "message": f"LinkedIn post button click failed: {str(e)}. Screenshot: {screenshot}"
+            }
+
+    except Exception as e:
+        try:
+            driver.switch_to.default_content()
+        except Exception:
+            pass
+
+        screenshot = save_screenshot(driver, prefix="linkedin_post_error")
+        return {
+            "success": False,
+            "message": f"{str(e)} | Screenshot: {screenshot}"
+        }

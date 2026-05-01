@@ -1,0 +1,85 @@
+import time
+from selenium.webdriver.common.by import By
+
+from automation_engine.common.wait_helper import wait_for_visible, wait_for_clickable
+from automation_engine.common.type_helper import type_like_human
+from automation_engine.common.click_helper import safe_click
+from automation_engine.common.screenshot_helper import save_screenshot
+from automation_engine.common.human_behavior import medium_pause
+from automation_engine.platforms.linkedin.selectors import (
+    START_POST_SELECTORS,
+    TEXTBOX_SELECTORS,
+    POST_BUTTON_SELECTORS,
+)
+
+def _find_first_visible(driver, selectors, timeout=10):
+    for selector in selectors:
+        try:
+            element = wait_for_visible(driver, By.CSS_SELECTOR, selector, timeout=timeout)
+            print(f"LinkedIn selector matched: {selector}")
+            return element
+        except Exception:
+            continue
+    return None
+
+def _find_first_clickable(driver, selectors, timeout=10):
+    for selector in selectors:
+        try:
+            element = wait_for_clickable(driver, By.CSS_SELECTOR, selector, timeout=timeout)
+            print(f"LinkedIn clickable selector matched: {selector}")
+            return element
+        except Exception:
+            continue
+    return None
+
+def post_to_linkedin(driver, post):
+    """
+    Create a text-only LinkedIn post.
+    Excepts user to already be logged in.
+    """
+    try:
+        print("Openinh LinkedIn feed...")
+        driver.get("https://www.linkedin.com/feed/")
+        medium_pause()
+        time.sleep(4)
+
+        # step 1: Open post modal
+        start_post_btn = _find_first_clickable(driver, START_POST_SELECTORS, timeout=12)
+        if not start_post_btn:
+            screenshot = save_screenshot(driver, prefix="linkedin_start_post_not_found")
+            return {
+                "success":False,
+                "message":f"LinkedIn start post button not found. Screenshot: {screenshot}"
+            }
+        print("LinkedIn start post button clicked")
+        medium_pause()
+        time.sleep()
+
+        # step 2: Find text editor
+        textbox = _find_first_visible(driver, TEXTBOX_SELECTORS, timeout=12)
+        if not textbox:
+            screenshot = save_screenshot(driver, prefix="linkedin_textbox_not_found")
+            return{
+                "success":False,
+                "message":f"LinkedIn textbox not found. Screenshot: {screenshot}"
+            }
+        
+        safe_click(driver, textbox)
+        print("LinkedIn textbox clicked")
+
+        type_like_human(textbox, post.caption)
+        print("LinkedIn caption typed")
+
+        medium_pause()
+        time.sleep(2)
+
+        # step 3: find and click post button
+        post_button = _find_first_clickable(driver, POST_BUTTON_SELECTORS, timeout=12)
+        if not post_button:
+            screenshot = save_screenshot(driver, prefix="Linkedin_post_button_not_found")
+            return {
+                "success":False,
+                "message":f"LinkedIn post button not found. Screenshot: {screenshot}"
+            }
+        
+        clicked = 

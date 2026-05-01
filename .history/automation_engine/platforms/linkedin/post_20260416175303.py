@@ -1,0 +1,374 @@
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+import time
+from selenium.webdriver.common.by import By
+
+from automation_engine.common.type_helper import type_like_human
+from automation_engine.common.click_helper import safe_click
+from automation_engine.common.screenshot_helper import save_screenshot
+from automation_engine.common.human_behavior import medium_pause
+from automation_engine.platforms.linkedin.selectors import (
+    START_POST_SELECTORS,
+    POST_BUTTON_SELECTORS,
+)
+
+
+def find_start_post_button(driver):
+    xpath_candidates = [
+        "//button[@aria-label='Start a post']",
+        "//button[contains(@aria-label,'Start a post')]",
+        "//div[@role='button' and @aria-label='Start a post']",
+        "//div[@role='button' and contains(@aria-label,'Start a post')]",
+        "//button[contains(@class,'share-box-feed-entry__trigger')]",
+        "//div[contains(@class,'share-box-feed-entry__trigger')]",
+        "//div[contains(@class,'share-box-feed-entry--closed')]",
+        "//span[contains(text(),'Start a post')]/ancestor::button[1]",
+        "//span[contains(text(),'Start a post')]/ancestor::*[@role='button'][1]",
+    ]
+
+    for xpath in xpath_candidates:
+        try:
+            elements = driver.find_elements(By.XPATH, xpath)
+
+            for el in elements:
+                try:
+                    if el.is_displayed() and el.is_enabled():
+                        print("✅ REAL Start Post found using:", xpath)
+                        return el
+                except:
+                    continue
+        except:
+            continue
+
+    return None
+
+def wait_for_popup(driver, timeout=10):
+    end_time = time.time() + timeout
+
+    while time.time() < end_time:
+        xpath_candidates = [
+            "//*[contains(normalize-space(), 'What do you want to talk about?')]",
+            "//div[contains(@class,'ql-editor')]",
+            "//div[@contenteditable='true']",
+            "//div[@role='textbox']",
+        ]
+
+        for xpath in xpath_candidates:
+            try:
+                elements = driver.find_elements(By.XPATH, xpath)
+                for el in elements:
+                    try:
+                        if el.is_displayed():
+                            print("Popup/editor visible using:", xpath)
+                            return True
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+
+        time.sleep(0.5)
+
+    return False
+
+
+def get_real_editor(driver, timeout=12):
+    end_time = time.time() + timeout
+
+    while time.time() < end_time:
+
+        # Step 1: find dialog first (VERY IMPORTANT)
+        dialogs = driver.find_elements(By.XPATH, "//div[@role='dialog']")
+        # dialogs = driver.find_elements(By.XPATH, "//div[@role='dialog']")
+        # print("Dialogs found:", len(dialogs))
+
+        print("Dialogs found:", len(dialogs))
+
+        for dialog in dialogs:
+            try:
+                if not dialog.is_displayed():
+                    continue
+
+                # Step 2: find editor INSIDE dialog only
+                editors = dialog.find_elements(By.XPATH, ".//div[@contenteditable='true']")
+
+                print("Editors inside dialog:", len(editors))
+
+                for editor in editors:
+                    try:
+                        if not editor.is_displayed():
+                            continue
+
+                        driver.execute_script(
+                            "arguments[0].scrollIntoView({block:'center'});",
+                            editor
+                        )
+
+                        time.sleep(0.5)
+
+                        try:
+                            safe_click(driver, editor)
+                        except Exception:
+                            driver.execute_script("arguments[0].click();", editor)
+
+                        driver.execute_script("arguments[0].focus();", editor)
+
+                        time.sleep(1)
+
+                        print("✅ REAL LINKEDIN EDITOR FOUND")
+                        return editor
+
+                    except Exception:
+                        continue
+
+            except Exception:
+                continue
+
+        # fallback: click placeholder to activate editor
+        try:
+            placeholders = driver.find_elements(
+                By.XPATH,
+                "//*[contains(text(),'What do you want to talk about?')]"
+            )
+
+            for ph in placeholders:
+                if ph.is_displayed():
+                    safe_click(driver, ph)
+                    print("Clicked placeholder")
+                    time.sleep(1)
+        except:
+            pass
+
+        time.sleep(0.5)
+
+    return None
+
+def type_in_editor(driver, textbox, text):
+    # 1. click + focus
+    try:
+        safe_click(driver, textbox)
+    except Exception:
+        pass
+
+    try:
+        driver.execute_script("arguments[0].focus();", textbox)
+    except Exception:
+        pass
+
+    time.sleep(1)
+
+    # 2. direct send_keys on textbox
+    try:
+        textbox.send_keys(text)
+        print("Caption typed using textbox.send_keys")
+        return True
+    except Exception:
+        pass
+
+    # 3. ActionChains on focused editor
+    try:
+        ActionChains(driver).move_to_element(textbox).click().send_keys(text).perform()
+        print("Caption typed using ActionChains")
+        return True
+    except Exception:
+        pass
+
+    # 4. helper typing
+    try:
+        type_like_human(textbox, text)
+        print("Caption typed using type_like_human")
+        return True
+    except Exception:
+        pass
+
+    # 5. JS fallback
+    try:
+        driver.execute_script("""
+            const el = arguments[0];
+            const text = arguments[1];
+
+            el.focus();
+
+            if (el.getAttribute('contenteditable') === 'true') {
+                el.innerHTML = '';
+                el.textContent = text;
+
+                el.dispatchEvent(new InputEvent('beforeinput', {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: 'insertText',
+                    data: text
+                }));
+
+                el.dispatchEvent(new InputEvent('input', {
+                    bubbles: true,
+                    inputType: 'insertText',
+                    data: text
+                }));
+
+                el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            } else {
+                el.value = text;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        """, textbox, text)
+        print("Caption typed using JavaScript fallback")
+        return True
+    except Exception as e:
+        print("Typing failed:", str(e))
+        return False
+
+
+def find_post_button(driver):
+    for selector in POST_BUTTON_SELECTORS:
+        try:
+            elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            for btn in elements:
+                try:
+                    if btn.is_displayed() and btn.is_enabled():
+                        print("Post button found using CSS:", selector)
+                        return btn
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    xpath_candidates = [
+        "//button[contains(@class,'share-actions__primary-action')]",
+        "//button[@aria-label='Post']",
+        "//button[contains(@aria-label,'Post')]",
+        "//span[normalize-space()='Post']/ancestor::button[1]",
+    ]
+
+    for xpath in xpath_candidates:
+        try:
+            elements = driver.find_elements(By.XPATH, xpath)
+            for btn in elements:
+                try:
+                    if btn.is_displayed() and btn.is_enabled():
+                        print("Post button found using XPath:", xpath)
+                        return btn
+                except Exception:
+                    continue
+        except Exception:
+            continue
+
+    return None
+
+
+def post_to_linkedin(driver, post):
+    try:
+        driver.get("https://www.linkedin.com/feed/")
+        time.sleep(8)
+        medium_pause()
+
+        print("Current URL:", driver.current_url)
+        print("Page title:", driver.title)
+
+        start_post_button = find_start_post_button(driver)
+        if not start_post_button:
+            screenshot = save_screenshot(driver, prefix="linkedin_start_post_not_found")
+            return {
+                "success": False,
+                "message": f"Start post button not found. Screenshot: {screenshot}"
+            }
+
+        try:
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", start_post_button)
+            time.sleep(1)
+
+            clicked = safe_click(driver, start_post_button)
+            if not clicked:
+                driver.execute_script("arguments[0].click();", start_post_button)
+                print("Start post clicked using JavaScript")
+
+            print("LinkedIn 'Start a post' trigger clicked")
+        except Exception:
+            screenshot = save_screenshot(driver, prefix="linkedin_start_post_click_failed")
+            return {
+                "success": False,
+                "message": f"Start post click failed. Screenshot: {screenshot}"
+            }
+
+        time.sleep(3)
+        print("After click URL:", driver.current_url)
+        print("After click title:", driver.title)
+
+        # Do NOT fail here if popup detection misses.
+        # Try to activate the composer manually first.
+        try:
+            placeholders = driver.find_elements(
+                By.XPATH,
+                "//*[contains(normalize-space(), 'What do you want to talk about?')]"
+            )
+            for ph in placeholders:
+                try:
+                    if ph.is_displayed():
+                        safe_click(driver, ph)
+                        print("Clicked placeholder area")
+                        time.sleep(1)
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        textbox = get_real_editor(driver, timeout=12)
+        print("Textbox outerHTML:", textbox.get_attribute("outerHTML")[:1000] if textbox else "None")
+
+        if not textbox:
+            screenshot = save_screenshot(driver, prefix="linkedin_textbox_not_found")
+            return {
+                "success": False,
+                "message": f"LinkedIn textbox not found. Screenshot: {screenshot}"
+            }
+
+        typed = type_in_editor(driver, textbox, post.caption)
+        if not typed:
+            screenshot = save_screenshot(driver, prefix="linkedin_typing_failed")
+            return {
+                "success": False,
+                "message": f"LinkedIn text could not be written. Screenshot: {screenshot}"
+            }
+
+        time.sleep(2)
+        medium_pause()
+
+        post_button = find_post_button(driver)
+        if not post_button:
+            screenshot = save_screenshot(driver, prefix="linkedin_post_button_not_found")
+            return {
+                "success": False,
+                "message": f"LinkedIn post button not found. Screenshot: {screenshot}"
+            }
+
+        clicked = safe_click(driver, post_button)
+        if not clicked:
+            ttry:
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'center'});",
+            start_post_button
+        )
+        time.sleep(1)
+
+        # Always try JS click first (LinkedIn needs it)
+        driver.execute_script("arguments[0].click();", start_post_button)
+        print("Start post clicked using JavaScript")
+
+    except Exception as e:
+        screenshot = save_screenshot(driver, prefix="linkedin_start_post_click_failed")
+        return {
+            "success": False,
+            "message": f"Start post click failed: {str(e)} | Screenshot: {screenshot}"
+        }
+
+        print("Post published on LinkedIn")
+        medium_pause()
+
+        return {"success": True, "message": "Post published on LinkedIn"}
+
+    except Exception as e:
+        screenshot = save_screenshot(driver, prefix="linkedin_post_error")
+        return {"success": False, "message": f"{str(e)} | Screenshot: {screenshot}"}
