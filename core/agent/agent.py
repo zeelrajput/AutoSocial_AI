@@ -185,6 +185,20 @@ def load_or_create_profile():
 
     return user_data_dir, profile_directory
 
+import tempfile
+
+def download_media_file(media_url):
+    temp_dir = Path(tempfile.gettempdir()) / "autosocial_media"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = media_url.split("/")[-1].split("?")[0]
+    local_path = temp_dir / filename
+
+    response = requests.get(media_url, timeout=30, verify=False)
+    response.raise_for_status()
+
+    local_path.write_bytes(response.content)
+    return str(local_path)
 
 def run_task_silently(post_id, platform, caption, media, browser):
     """
@@ -253,8 +267,10 @@ async def main(base_url: str):
                     caption = data.get("caption")
                     media = data.get("media") or []
 
-                    if isinstance(media, str):
-                        media = [media]
+                    media = [
+                        download_media_file(m) if isinstance(m, str) and m.startswith("http") else m
+                        for m in media
+                    ]
 
                     log("📩 Task received")
                     log(f"📱 Platform: {platform}")

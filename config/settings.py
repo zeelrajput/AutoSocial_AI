@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure--0kgpz)11o%f4w+1d@tz7u)n5smiz(g)6r0had9nof7%!d-5*f
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]
 
 AUTH_USER_MODEL = 'accounts.User'
 # Application definition
@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'apps.posts',
     'apps.scheduler',
     'django_celery_beat',
+    'corsheaders',
    
 ]
 
@@ -72,6 +73,8 @@ CHANNEL_LAYERS = {
 }
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
+
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -79,6 +82,23 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+# SITE_BASE_URL = "http://127.0.0.1:8000"
+
+SITE_BASE_URL = "https://agents.zettalgor.com"
+
+CORS_ALLOW_ALL_ORIGINS = True
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://agents.zettalgor.com",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "https://agents.zettalgor.com",
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -148,3 +168,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
