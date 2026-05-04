@@ -1,12 +1,12 @@
 import time
 from types import SimpleNamespace
 
-from automation_engine.browser.browser_manager import BrowserManager
+from core.automation_engine.browser.browser_manager import BrowserManager
 
-from automation_engine.platforms.x.post import post_to_x
-from automation_engine.platforms.linkedin.post import post_to_linkedin
-from automation_engine.platforms.instagram.post import post_to_instagram
-from automation_engine.platforms.facebook.post import post_to_facebook
+from core.automation_engine.platforms.x.post import post_to_x
+from core.automation_engine.platforms.linkedin.post import post_to_linkedin
+from core.automation_engine.platforms.instagram.post import post_to_instagram
+from core.automation_engine.platforms.facebook.post import post_to_facebook
 
 
 def run_task(post_id, platform=None, caption=None, media=None, browser_manager=None):

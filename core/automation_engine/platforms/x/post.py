@@ -1,8 +1,8 @@
 import time
 
-from automation_engine.common.screenshot_helper import save_screenshot
-from automation_engine.common.human_behavior import medium_pause
-from automation_engine.common.logger import clean_log as log
+from core.automation_engine.common.screenshot_helper import save_screenshot
+from core.automation_engine.common.human_behavior import medium_pause
+from core.automation_engine.common.logger import clean_log as log
 
 from .utils import (
     open_x_home,

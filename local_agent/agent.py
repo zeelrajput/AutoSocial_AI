@@ -12,8 +12,8 @@ import websockets
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
-from automation_engine.executor.task_runner import run_task
-from automation_engine.browser.browser_manager import BrowserManager
+from core.automation_engine.executor.task_runner import run_task
+from core.automation_engine.browser.browser_manager import BrowserManager
 
 
 DJANGO_BASE_URL = "http://127.0.0.1:8000"

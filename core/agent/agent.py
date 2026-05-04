@@ -5,9 +5,12 @@ import os
 import sys
 import getpass
 from pathlib import Path
-
+import ssl
 import requests
 import websockets
+
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # BEFORE
 # BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,8 +23,8 @@ CORE_DIR = PROJECT_ROOT / "core"
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(CORE_DIR))
 
-from automation_engine.executor.task_runner import run_task
-from automation_engine.browser.browser_manager import BrowserManager
+from core.automation_engine.executor.task_runner import run_task
+from core.automation_engine.browser.browser_manager import BrowserManager
 
 
 # BEFORE
@@ -67,36 +70,46 @@ def make_ws_url(base_url, agent_token):
 
 # AFTER
 def get_agent_token(base_url):
-    env_token = os.getenv("AGENT_TOKEN")
-    if env_token:
-        log("✅ Agent token loaded from environment")
-        return env_token
+    import requests
+    import getpass
 
-    # AFTER
+    email = input("Enter email: ")
+    password = getpass.getpass("Enter password: ")
+
     login_url = f"{base_url}/accounts/login/"
 
-    log("🔐 Please login to connect local agent")
-
-    email = input("Enter email: ").strip()
-    password = getpass.getpass("Enter password: ").strip()
+    print(f"🔐 Login URL: {login_url}")
 
     response = requests.post(
         login_url,
         json={
             "email": email,
             "password": password,
-            "device_name": "Windows Agent",
+            "device_name": "AutoSocial Local Agent"
         },
         timeout=20,
+        verify=False
     )
 
-    data = response.json()
+    print("📡 Status Code:", response.status_code)
+    print("📄 Response Text:", response.text[:500])
 
-    if not data.get("success"):
-        raise Exception(data.get("message", "Login failed"))
+    try:
+        data = response.json()
+    except Exception:
+        raise Exception(
+            "Server did not return JSON. Check login API URL, server error, or CSRF/API issue."
+        )
 
-    log("✅ Login successful")
-    return data["agent_token"]
+    if response.status_code != 200:
+        raise Exception(data.get("error", "Login failed"))
+
+    token = data.get("agent_token")
+    if not token:
+        raise Exception("Token not found in login response")
+
+    print("✅ Login successful")
+    return token
 
 
 def open_profile_for_platform_login(user_data_dir, profile_directory):
@@ -216,10 +229,16 @@ async def main(base_url: str):
         try:
             log("🔄 Connecting to server...")
 
+            ssl_context = None
+
+            if server_url.startswith("wss://"):
+                ssl_context = ssl._create_unverified_context()
+
             async with websockets.connect(
                 server_url,
                 ping_interval=None,
                 ping_timeout=None,
+                ssl=ssl_context,
             ) as websocket:
                 log("✅ Agent connected")
 

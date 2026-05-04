@@ -9,10 +9,10 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 
-from automation_engine.common.tab_manager import open_new_tab
-from automation_engine.common.click_helper import safe_click
-from automation_engine.common.type_helper import type_like_human
-from automation_engine.common.logger import clean_log as log
+from core.automation_engine.common.tab_manager import open_new_tab
+from core.automation_engine.common.click_helper import safe_click
+from core.automation_engine.common.type_helper import type_like_human
+from core.automation_engine.common.logger import clean_log as log
 
 from .utils import (
     wait_for_linkedin_login,

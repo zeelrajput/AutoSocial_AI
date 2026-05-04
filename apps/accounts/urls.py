@@ -6,3 +6,5 @@ urlpatterns = [
     path("login/", views.login_user),
     path("generate-agent-token/", views.generate_agent_token),
 ]
+
+

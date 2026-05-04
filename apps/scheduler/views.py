@@ -75,3 +75,5 @@ def send_task_to_agent(request, post_id):
         "user_id": post.user.id,
         "platform": post.platform
     })
+
+
