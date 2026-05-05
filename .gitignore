@@ -1,9 +1,12 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
 # Virtual env
 venv/
+.venv/
 
 # Django
 db.sqlite3
@@ -21,6 +24,7 @@ AutoSocialAI/
 
 # Screenshots
 screenshots/
+runtime/screenshots/
 
 # Build / dist
 build/
@@ -29,3 +33,7 @@ dist/
 
 # Celery
 celerybeat-schedule*
+
+# OS files
+.DS_Store
+Thumbs.db
