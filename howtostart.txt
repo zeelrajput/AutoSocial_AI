@@ -1,0 +1,48 @@
+=== AutoSocial AI – How to Start Project ===
+
+========================
+
+1. LOCAL DEVELOPMENT SETUP
+   ========================
+
+Prerequisites:
+* Virtual environment activated
+
+Terminal 1:
+python manage.py runserver
+
+Terminal 2:
+celery -A config worker -l info -P solo
+
+Terminal 3:
+celery -A config beat -l info
+
+Terminal 4:
+cd dist
+agent_local.exe  -- when we want to test locally 
+
+
+========================
+2. LIVE TESTING (PRODUCTION)
+============================
+
+
+Steps:
+
+1. Run:
+   agent_live.exe
+
+2. Login using email & password
+
+3. Select Chrome profile (or create new)
+
+4. Login once into social platforms (Facebook, Instagram, LinkedIn, X)
+
+5. Create post using API:
+   https://agents.zettalgor.com/posts/create/
+
+6. Scheduler will automatically send task to agent
+
+---
+
+=== END ===
