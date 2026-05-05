@@ -84,9 +84,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# SITE_BASE_URL = "http://127.0.0.1:8000"
+SITE_BASE_URL = "http://127.0.0.1:8000"
 
-SITE_BASE_URL = "https://agents.zettalgor.com"
+# SITE_BASE_URL = "https://agents.zettalgor.com"
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -100,6 +100,10 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "https://agents.zettalgor.com",
 ]
+
+ZETTALGOR_API_URL = "https://api.zettalgor.com/v1/chat/completions"
+ZETTALGOR_API_KEY = "ze_al_FPY-bLcxsG2gh6uWee6KLP8JXVYk5F759Ubu7FDm25k"
+ZETTALGOR_MODEL = "ZAi8"
 
 ROOT_URLCONF = 'config.urls'
 
