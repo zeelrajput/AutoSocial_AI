@@ -146,9 +146,11 @@ class BrowserManager:
                 try:
                     shutil.copy2(source_file, target_file)
                 except PermissionError:
-                    print(f"⚠️ Skipped locked file: {source_file}")
+                    # print(f"⚠️ Skipped locked file: {source_file}")
+                    pass
                 except OSError:
-                    print(f"⚠️ Skipped unavailable file: {source_file}")
+                    # print(f"⚠️ Skipped unavailable file: {source_file}")
+                    pass
 
     # --------------------------------------------------
     # Import existing profile safely
@@ -170,7 +172,7 @@ class BrowserManager:
         target_profile_path = target_user_data_dir / "Default"
 
         print("\n📥 Importing selected Chrome profile...")
-        print("ℹ️ User's existing Chrome windows will NOT be closed.")
+        # print("ℹ️ User's existing Chrome windows will NOT be closed.")
 
         BrowserManager._safe_copy_profile_folder(
             source=source_profile_path,
@@ -182,10 +184,11 @@ class BrowserManager:
             try:
                 shutil.copy2(local_state_file, target_user_data_dir / "Local State")
             except Exception:
-                print("⚠️ Local State file skipped because it is locked/unavailable.")
+                # print("⚠️ Local State file skipped because it is locked/unavailable.")
+                pass
 
         print("✅ Existing Chrome profile imported successfully.")
-        print(f"📁 AutoSocial profile path: {target_user_data_dir}")
+        # print(f"📁 AutoSocial profile path: {target_user_data_dir}")
 
         return str(target_user_data_dir), "Default"
 
