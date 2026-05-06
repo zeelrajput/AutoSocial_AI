@@ -13,14 +13,13 @@ from selenium.webdriver.remote.webdriver import WebDriver
 
 class BrowserManager:
     """
-    Production-ready Chrome manager for AutoSocial AI.
+    Chrome manager for AutoSocial AI.
 
-    Option 1:
-        Create/use AutoSocial Chrome profile.
-
-    Option 2:
-        Import existing Chrome profile into AutoSocial profile.
-        Selenium does NOT run directly on user's real Chrome profile.
+    Goal:
+    - Do NOT close user's normal Chrome windows.
+    - Use dedicated AutoSocial Chrome profile.
+    - If user selects existing Chrome profile, copy/import it safely.
+    - Selenium opens only AutoSocial Chrome profile.
     """
 
     def __init__(
@@ -41,7 +40,11 @@ class BrowserManager:
 
     @staticmethod
     def get_autosocial_profile_dir() -> str:
-        path = Path(os.environ.get("LOCALAPPDATA", os.getcwd())) / "AutoSocialAI" / "chrome_profile"
+        path = (
+            Path(os.environ.get("LOCALAPPDATA", os.getcwd()))
+            / "AutoSocialAI"
+            / "chrome_profile"
+        )
         path.mkdir(parents=True, exist_ok=True)
         return str(path)
 
@@ -50,14 +53,23 @@ class BrowserManager:
         return Path(os.environ["LOCALAPPDATA"]) / "Google" / "Chrome" / "User Data"
 
     # --------------------------------------------------
-    # Process cleanup
+    # Safe cleanup
     # --------------------------------------------------
 
     @staticmethod
-    def kill_chrome_processes() -> None:
-        subprocess.call("taskkill /F /IM chromedriver.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.call("taskkill /F /IM chrome.exe", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(2)
+    def cleanup_chromedriver_only() -> None:
+        """
+        Safe cleanup:
+        - Kill only chromedriver.exe
+        - Do NOT kill chrome.exe
+        """
+        subprocess.call(
+            "taskkill /F /IM chromedriver.exe",
+            shell=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        time.sleep(1)
 
     # --------------------------------------------------
     # Profile detection
@@ -73,7 +85,9 @@ class BrowserManager:
         profiles = []
 
         for folder in base_path.iterdir():
-            if folder.is_dir() and (folder.name == "Default" or folder.name.startswith("Profile")):
+            if folder.is_dir() and (
+                folder.name == "Default" or folder.name.startswith("Profile")
+            ):
                 profiles.append(folder.name)
 
         if not profiles:
@@ -82,27 +96,19 @@ class BrowserManager:
         return base_path, profiles
 
     # --------------------------------------------------
-    # Import existing profile safely
+    # Safe copy helper
     # --------------------------------------------------
 
     @staticmethod
-    def import_existing_profile(source_user_data_dir: Path, source_profile_name: str) -> Tuple[str, str]:
-        source_profile_path = source_user_data_dir / source_profile_name
+    def _safe_copy_profile_folder(source: Path, target: Path) -> None:
+        """
+        Copy selected Chrome profile without closing user's Chrome.
 
-        if not source_profile_path.exists():
-            raise FileNotFoundError(f"Selected Chrome profile not found: {source_profile_path}")
+        Some files may be locked if Chrome is open.
+        We skip locked/cache files instead of killing Chrome.
+        """
 
-        BrowserManager.kill_chrome_processes()
-
-        target_user_data_dir = Path(BrowserManager.get_autosocial_profile_dir())
-        target_profile_path = target_user_data_dir / "Default"
-
-        if target_user_data_dir.exists():
-            shutil.rmtree(target_user_data_dir)
-
-        target_user_data_dir.mkdir(parents=True, exist_ok=True)
-
-        ignore_items = shutil.ignore_patterns(
+        ignore_names = {
             "SingletonLock",
             "SingletonSocket",
             "SingletonCookie",
@@ -113,17 +119,70 @@ class BrowserManager:
             "Code Cache",
             "BrowserMetrics",
             "OptimizationGuidePredictionModels",
-        )
+            "Safe Browsing",
+            "CertificateRevocation",
+        }
 
-        shutil.copytree(
-            source_profile_path,
-            target_profile_path,
-            ignore=ignore_items,
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+
+        target.mkdir(parents=True, exist_ok=True)
+
+        for root, dirs, files in os.walk(source):
+            root_path = Path(root)
+            relative_path = root_path.relative_to(source)
+            target_root = target / relative_path
+            target_root.mkdir(parents=True, exist_ok=True)
+
+            dirs[:] = [d for d in dirs if d not in ignore_names]
+
+            for file_name in files:
+                if file_name in ignore_names:
+                    continue
+
+                source_file = root_path / file_name
+                target_file = target_root / file_name
+
+                try:
+                    shutil.copy2(source_file, target_file)
+                except PermissionError:
+                    print(f"⚠️ Skipped locked file: {source_file}")
+                except OSError:
+                    print(f"⚠️ Skipped unavailable file: {source_file}")
+
+    # --------------------------------------------------
+    # Import existing profile safely
+    # --------------------------------------------------
+
+    @staticmethod
+    def import_existing_profile(
+        source_user_data_dir: Path,
+        source_profile_name: str,
+    ) -> Tuple[str, str]:
+        source_profile_path = source_user_data_dir / source_profile_name
+
+        if not source_profile_path.exists():
+            raise FileNotFoundError(
+                f"Selected Chrome profile not found: {source_profile_path}"
+            )
+
+        target_user_data_dir = Path(BrowserManager.get_autosocial_profile_dir())
+        target_profile_path = target_user_data_dir / "Default"
+
+        print("\n📥 Importing selected Chrome profile...")
+        print("ℹ️ User's existing Chrome windows will NOT be closed.")
+
+        BrowserManager._safe_copy_profile_folder(
+            source=source_profile_path,
+            target=target_profile_path,
         )
 
         local_state_file = source_user_data_dir / "Local State"
         if local_state_file.exists():
-            shutil.copy2(local_state_file, target_user_data_dir / "Local State")
+            try:
+                shutil.copy2(local_state_file, target_user_data_dir / "Local State")
+            except Exception:
+                print("⚠️ Local State file skipped because it is locked/unavailable.")
 
         print("✅ Existing Chrome profile imported successfully.")
         print(f"📁 AutoSocial profile path: {target_user_data_dir}")
@@ -218,7 +277,10 @@ class BrowserManager:
     def start_browser(self) -> WebDriver:
         self._validate_profile_path()
 
-        BrowserManager.kill_chrome_processes()
+        # ✅ Important:
+        # Do NOT kill chrome.exe.
+        # This keeps user's normal Chrome windows untouched.
+        BrowserManager.cleanup_chromedriver_only()
 
         options = self._build_options()
 
@@ -233,7 +295,7 @@ class BrowserManager:
             except Exception:
                 pass
 
-            print("✅ Chrome opened successfully")
+            print("✅ AutoSocial Chrome opened successfully")
             print(f"📁 Profile path: {self.user_data_dir}")
             print(f"👤 Profile directory: {self.profile_directory}")
 
@@ -242,10 +304,12 @@ class BrowserManager:
         except WebDriverException as exc:
             raise RuntimeError(
                 "Failed to start Chrome browser.\n"
-                "Permanent fix suggestion:\n"
-                "1. Use AutoSocial profile only\n"
-                "2. Do not run Selenium directly on real Chrome profile\n"
-                "3. Import existing profile using Option 2\n\n"
+                "Possible reasons:\n"
+                "1. AutoSocial Chrome is already open with same profile\n"
+                "2. Profile path is corrupted\n"
+                "3. ChromeDriver version issue\n\n"
+                "Important: This code does NOT close user's normal Chrome windows.\n"
+                "Please close only AutoSocial Chrome if it is already open.\n\n"
                 f"Original error: {exc}"
             )
 

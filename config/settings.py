@@ -84,9 +84,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# SITE_BASE_URL = "http://127.0.0.1:8000"
+SITE_BASE_URL = "http://127.0.0.1:8000"
 
-SITE_BASE_URL = "https://agents.zettalgor.com"
+# SITE_BASE_URL = "https://agents.zettalgor.com"
 
 CORS_ALLOW_ALL_ORIGINS = True
 
