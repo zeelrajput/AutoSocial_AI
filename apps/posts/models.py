@@ -1,4 +1,5 @@
 from django.db import models
+# pyrefly: ignore [missing-import]
 from apps.accounts.models import User
 # Create your models here.
 
@@ -37,6 +38,9 @@ class Post(models.Model):
     # status tracking
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 
+    # ✅ social media published post URL
+    post_url = models.URLField(blank=True, null=True)
+
 class PostMedia(models.Model):
     post = models.ForeignKey(
         Post,
@@ -50,9 +54,4 @@ class PostMedia(models.Model):
     def __str__(self):
         return f"Media for Post {self.post.id}"
 
-    # timestamp
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Media for Post {self.post.id}"
     

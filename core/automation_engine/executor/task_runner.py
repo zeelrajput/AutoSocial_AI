@@ -69,14 +69,16 @@ def run_task(post_id, platform=None, caption=None, media=None, browser_manager=N
         if not result.get("success"):
             return {
                 "success": False,
-                "message": result.get("message", "Automation failed")
+                "message": result.get("message", "Automation failed"),
+                "post_url": result.get("post_url")
             }
 
         time.sleep(2)
 
         return {
             "success": True,
-            "message": f"Post {post_id} processed successfully"
+            "message": f"Post {post_id} processed successfully",
+            "post_url": result.get("post_url")
         }
 
     except Exception as e:
@@ -86,5 +88,5 @@ def run_task(post_id, platform=None, caption=None, media=None, browser_manager=N
         }
 
     finally:
-        if driver:
-            BrowserManager.close_browser(driver)
+        if 'manager' in locals() and manager:
+            manager.close_browser()

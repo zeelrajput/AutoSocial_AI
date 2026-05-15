@@ -12,33 +12,22 @@ import websockets
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# BEFORE
-# BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# sys.path.insert(0, BASE_DIR)
-
-# AFTER
+# Fix path for direct execution
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CORE_DIR = PROJECT_ROOT / "core"
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-sys.path.insert(0, str(PROJECT_ROOT))
-sys.path.insert(0, str(CORE_DIR))
+from core.automation_engine.executor.comment_task_runner import (
+    run_check_comments_task,
+    run_reply_comment_task,
+)
+
+browser_driver = None
+browser_manager = None
 
 from core.automation_engine.executor.task_runner import run_task
 from core.automation_engine.browser.browser_manager import BrowserManager
 
-
-# BEFORE
-# DJANGO_BASE_URL = "http://127.0.0.1:8000"
-# LOGIN_URL = f"{DJANGO_BASE_URL}/accounts/login/"
-
-# AFTER
-# Base URL will come from agent_live.py or agent_local.py
-
-
-# BEFORE
-# CONFIG_FILE = os.path.join(BASE_DIR, "agent_config.json")
-
-# AFTER
 APP_DATA_DIR = Path(os.getenv("LOCALAPPDATA")) / "AutoSocialAI"
 APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -51,7 +40,6 @@ def log(message):
 
 def make_ws_url(base_url, agent_token):
     """
-    AFTER:
     Convert normal HTTP/HTTPS base URL into WebSocket URL.
     http  -> ws
     https -> wss
@@ -65,10 +53,6 @@ def make_ws_url(base_url, agent_token):
     return f"{ws_base_url}/ws/agent/?token={agent_token}"
 
 
-# BEFORE
-# def get_agent_token():
-
-# AFTER
 def get_agent_token(base_url):
     import requests
     import getpass
@@ -104,7 +88,13 @@ def get_agent_token(base_url):
     if response.status_code != 200:
         raise Exception(data.get("error", "Login failed"))
 
-    token = data.get("agent_token")
+    token = (
+        data.get("agent_token")
+        or data.get("data", {}).get("agent_token")
+        or data.get("access")
+        or data.get("data", {}).get("access")
+    )
+
     if not token:
         raise Exception("Token not found in login response")
 
@@ -210,133 +200,153 @@ def run_task_silently(post_id, platform, caption, media, browser):
             return run_task(post_id, platform, caption, media, browser)
 
 
-# BEFORE
-# async def main():
-
-# AFTER
 async def main(base_url: str):
     log(f"🌐 Base URL: {base_url}")
 
-    # BEFORE
-    # agent_token = get_agent_token()
+    try:
+        agent_token = get_agent_token(base_url)
+        user_data_dir, profile_directory = load_or_create_profile()
 
-    # AFTER
-    agent_token = get_agent_token(base_url)
+        browser_manager = BrowserManager(
+            user_data_dir=user_data_dir,
+            profile_directory=profile_directory,
+            detach=True,
+            headless=False,
+        )
 
-    user_data_dir, profile_directory = load_or_create_profile()
+        server_url = make_ws_url(base_url, agent_token)
 
-    browser_manager = BrowserManager(
-        user_data_dir=user_data_dir,
-        profile_directory=profile_directory,
-        detach=True,
-        headless=False,
-    )
-
-    # BEFORE
-    # server_url = f"ws://127.0.0.1:8000/ws/agent/?token={agent_token}"
-
-    # AFTER
-    server_url = make_ws_url(base_url, agent_token)
-    # log(f"🔌 WebSocket URL: {server_url}")
-
-    while True:
-        try:
-            log("🔄 Connecting to server...")
-
-            ssl_context = None
-
-            if server_url.startswith("wss://"):
-                ssl_context = ssl._create_unverified_context()
-
-            async with websockets.connect(
-                server_url,
-                ping_interval=None,
-                ping_timeout=None,
-                ssl=ssl_context,
-            ) as websocket:
-                log("✅ Agent connected")
-
-                async for message in websocket:
-                    data = json.loads(message)
-
-                    if data.get("type") != "task":
-                        continue
-
-                    post_id = data.get("post_id")
-                    platform = data.get("platform")
-                    caption = data.get("caption")
-                    media = data.get("media") or []
-
-                    media = [
-                        download_media_file(m) if isinstance(m, str) and m.startswith("http") else m
-                        for m in media
-                    ]
-
-                    log("📩 Task received")
-                    log(f"📱 Platform: {platform}")
-                    log("🚀 Starting automation...")
-
-                    try:
-                        result = await asyncio.to_thread(
-                            run_task_silently,
-                            post_id,
-                            platform,
-                            caption,
-                            media,
-                            browser_manager,
-                        )
-
-                        await websocket.send(json.dumps({
-                            "type": "task_result",
-                            "post_id": post_id,
-                            "success": result.get("success", False),
-                            "message": result.get("message", ""),
-                        }))
-
-                        if result.get("success"):
-                            log("✅ Automation completed")
-                        else:
-                            log("❌ Automation failed")
-
-                    except Exception as e:
-                        await websocket.send(json.dumps({
-                            "type": "task_result",
-                            "post_id": post_id,
-                            "success": False,
-                            "message": str(e),
-                        }))
-
-                        log("❌ Automation failed")
-                        log(f"Error: {e}")
-
-        except KeyboardInterrupt:
-            log("\nAgent stopped by user.")
-            break
-
-        except asyncio.CancelledError:
-            log("\nAgent cancelled.")
-            break
-
-        except Exception as e:
-            log(f"❌ Connection lost: {e}")
-            log("Retrying in 5 seconds...")
-
+        while True:
             try:
+                log("🔄 Connecting to server...")
+
+                ssl_context = None
+                if server_url.startswith("wss://"):
+                    ssl_context = ssl._create_unverified_context()
+
+                async with websockets.connect(
+                    server_url,
+                    ping_interval=None,
+                    ping_timeout=None,
+                    ssl=ssl_context,
+                ) as websocket:
+                    log("✅ Agent connected")
+
+                    async for message in websocket:
+                        data = json.loads(message)
+                        task_type = data.get("type")
+
+                        if task_type not in ["task", "check_comments", "reply_comment"]:
+                            continue
+
+                        post_id = data.get("post_id")
+                        platform = data.get("platform")
+                        caption = data.get("caption")
+                        media = data.get("media") or []
+
+                        media = [
+                            download_media_file(m) if isinstance(m, str) and m.startswith("http") else m
+                            for m in media
+                        ]
+
+                        log("📩 Task received")
+                        log(f"📱 Platform: {platform}")
+                        log("🚀 Starting automation...")
+
+                        try:
+                            if task_type == "task":
+                                result = await asyncio.to_thread(
+                                    run_task_silently,
+                                    post_id,
+                                    platform,
+                                    caption,
+                                    media,
+                                    browser_manager,
+                                )
+
+                                await websocket.send(json.dumps({
+                                    "type": "task_result",
+                                    "post_id": post_id,
+                                    "success": result.get("success", False),
+                                    "message": result.get("message", ""),
+                                    "post_url": result.get("post_url"),
+                                }))
+
+                                if result.get("success"):
+                                    log("✅ Automation completed")
+                                else:
+                                    log("❌ Automation failed")
+
+                            elif task_type == "check_comments":
+                                post_url = data.get("post_url")
+                                try:
+                                    driver = browser_manager.start_browser()
+                                    comments = await asyncio.to_thread(
+                                        run_check_comments_task,
+                                        driver,
+                                        platform,
+                                        post_url,
+                                    )
+
+                                    await websocket.send(json.dumps({
+                                        "type": "comment_check_result",
+                                        "post_id": post_id,
+                                        "platform": platform,
+                                        "comments": comments,
+                                    }))
+                                    log("💬 Comments checked")
+                                finally:
+                                    browser_manager.close_browser()
+
+                            elif task_type == "reply_comment":
+                                post_url = data.get("post_url")
+                                reply_text = data.get("reply_text")
+                                author = data.get("author")
+                                comment_text = data.get("comment_text")
+                                comment_id = data.get("comment_id")
+
+                                try:
+                                    driver = browser_manager.start_browser()
+                                    result = await asyncio.to_thread(
+                                        run_reply_comment_task,
+                                        driver,
+                                        platform,
+                                        post_url,
+                                        reply_text,
+                                        author,
+                                        comment_text,
+                                    )
+
+                                    await websocket.send(json.dumps({
+                                        "type": "reply_comment_result",
+                                        "success": result.get("success"),
+                                        "message": result.get("message"),
+                                        "comment_id": comment_id,
+                                    }))
+                                    log("🤖 Reply task completed")
+                                finally:
+                                    browser_manager.close_browser()
+
+                        except Exception as e:
+                            await websocket.send(json.dumps({
+                                "type": "task_result",
+                                "post_id": post_id,
+                                "success": False,
+                                "message": str(e),
+                            }))
+                            log("❌ Automation failed")
+                            log(f"Error: {e}")
+
+            except (websockets.ConnectionClosed, Exception) as e:
+                log(f"❌ Connection error: {e}")
+                log("Retrying in 5 seconds...")
                 await asyncio.sleep(5)
-            except asyncio.CancelledError:
-                log("\nAgent stopped.")
-                break
 
-
-# BEFORE
-# if __name__ == "__main__":
-#     try:
-#         asyncio.run(main())
-#     except KeyboardInterrupt:
-#         log("\nAgent stopped by user.")
-#     except asyncio.CancelledError:
-#         log("\nAgent cancelled.")
-
-# AFTER
-# Do not run directly from agent.py.
-# Run using agent_live.py or agent_local.py.
+    except KeyboardInterrupt:
+        log("\nAgent stopped by user.")
+    except asyncio.CancelledError:
+        log("\nAgent cancelled.")
+    except Exception as e:
+        log(f"❌ Fatal error: {e}")
+    finally:
+        log("👋 Agent shutdown complete.")

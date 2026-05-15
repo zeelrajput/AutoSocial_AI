@@ -201,6 +201,7 @@ def post_to_instagram(driver, post):
                 "message": f"Caption typing failed | {screenshot}",
             }
 
+
         log("📤 Sharing post...")
         share_btn = find_share_button(driver)
 
@@ -239,9 +240,44 @@ def post_to_instagram(driver, post):
 
         medium_pause()
 
+        log("🔗 Fetching latest Instagram post URL...")
+
+        time.sleep(5)
+
+        post_url = ""
+
+        try:
+            # Try to navigate to the user's profile directly
+            try:
+                profile_link = driver.find_element("xpath", "//a[.//span[text()='Profile'] or .//div[text()='Profile']]")
+                profile_url = profile_link.get_attribute("href")
+                driver.get(profile_url)
+            except Exception:
+                # Fallback: try to find the profile picture link in the sidebar
+                profile_link = driver.find_element("xpath", "(//a[contains(@href, '/') and .//img[contains(@alt, 'profile picture')]])[last()]")
+                profile_url = profile_link.get_attribute("href")
+                driver.get(profile_url)
+                
+            time.sleep(5)
+
+            # Find latest post in the profile
+            latest_post = driver.find_element(
+                "xpath",
+                "(//a[contains(@href, '/p/')])[1]"
+            )
+
+            # Get post URL
+            post_url = latest_post.get_attribute("href")
+
+            log(f"✅ Post URL found: {post_url}")
+
+        except Exception as e:
+            log(f"❌ Failed to fetch post URL: {str(e)}")
+
         return {
             "success": True,
             "message": "Instagram post successful",
+            "post_url":post_url
         }
 
     except Exception as e:

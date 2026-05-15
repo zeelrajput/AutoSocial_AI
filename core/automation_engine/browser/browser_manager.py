@@ -33,6 +33,7 @@ class BrowserManager:
         self.profile_directory = profile_directory
         self.detach = detach
         self.headless = headless
+        self.driver = None
 
     # --------------------------------------------------
     # Paths
@@ -256,8 +257,14 @@ class BrowserManager:
         options.add_argument("--no-default-browser-check")
         options.add_argument("--disable-background-mode")
         options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_argument("--remote-debugging-port=0")
-
+        options.add_argument(
+            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        )
+    
         options.add_experimental_option("detach", self.detach)
         options.add_experimental_option("useAutomationExtension", False)
         options.add_experimental_option(
@@ -278,6 +285,15 @@ class BrowserManager:
     # --------------------------------------------------
 
     def start_browser(self) -> WebDriver:
+        if self.driver is not None:
+            try:
+                # Check if driver is still responsive
+                _ = self.driver.current_window_handle
+                return self.driver
+            except Exception:
+                # Driver is dead, clean up instance state
+                self.driver = None
+
         self._validate_profile_path()
 
         # ✅ Important:
@@ -302,6 +318,7 @@ class BrowserManager:
             print(f"📁 Profile path: {self.user_data_dir}")
             print(f"👤 Profile directory: {self.profile_directory}")
 
+            self.driver = driver
             return driver
 
         except WebDriverException as exc:
@@ -320,9 +337,25 @@ class BrowserManager:
     # Close browser
     # --------------------------------------------------
 
+    def close_browser(self) -> None:
+        """
+        Close the current browser session and clear the driver instance.
+        """
+        if self.driver:
+            try:
+                self.driver.quit()
+                print("✅ AutoSocial Chrome closed successfully")
+            except Exception as e:
+                print(f"⚠️ Error closing Chrome: {e}")
+            finally:
+                self.driver = None
+
     @staticmethod
-    def close_browser(driver: Optional[WebDriver]) -> None:
-        if driver is not None:
+    def force_close_driver(driver: Optional[WebDriver]) -> None:
+        """
+        Static helper to close a specific driver instance if needed.
+        """
+        if driver:
             try:
                 driver.quit()
             except Exception:

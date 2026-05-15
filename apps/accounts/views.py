@@ -6,7 +6,7 @@ from django.contrib.auth import authenticate, login
 from django.contrib.auth.decorators import login_required
 
 from apps.accounts.models import User, AgentDevice
-
+from rest_framework_simplejwt.tokens import RefreshToken
 
 @csrf_exempt
 def register_user(request):
@@ -22,7 +22,9 @@ def register_user(request):
         return JsonResponse({
             "success": True,
             "message": "User registration successfully done",
-            "user_id": user.id
+            "data": {
+                "user_id": user.id
+            }
         })
 
     return JsonResponse({"success": False, "message": "Only POST allowed"}, status=405)
@@ -40,7 +42,7 @@ def login_user(request):
         )
 
         if user:
-            login(request, user)
+            refresh = RefreshToken.for_user(user)
 
             device = AgentDevice.objects.create(
                 user=user,
@@ -50,9 +52,13 @@ def login_user(request):
             return JsonResponse({
                 "success": True,
                 "message": "Login successfully done",
-                "user_id": user.id,
-                "device_id": device.id,
-                "agent_token": device.raw_token
+                "data": {
+                    "user_id": user.id,
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                    "device_id": device.id,
+                    "agent_token": device.raw_token
+                }
             })
 
         return JsonResponse({
