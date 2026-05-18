@@ -5,6 +5,9 @@ from django.shortcuts import get_object_or_404
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+
 from apps.posts.models import Post
 
 
@@ -35,6 +38,8 @@ def send_post_to_agent(post):
     )
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def run_schedular(request):
     now = timezone.now()
 
@@ -60,6 +65,8 @@ def run_schedular(request):
     })
 
 
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def send_task_to_agent(request, post_id):
     post = get_object_or_404(Post, id=post_id)
 
@@ -75,5 +82,3 @@ def send_task_to_agent(request, post_id):
         "user_id": post.user.id,
         "platform": post.platform
     })
-
-

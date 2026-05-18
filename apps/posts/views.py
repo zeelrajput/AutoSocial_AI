@@ -3,7 +3,6 @@ import requests
 import re
 from django.conf import settings
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 # pyrefly: ignore [missing-import]
 from apps.posts.models import Post, PostMedia
 from rest_framework.decorators import api_view, permission_classes
