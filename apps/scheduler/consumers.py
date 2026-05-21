@@ -1,3 +1,4 @@
+from asyncio import base_events
 import json
 import random
 import asyncio
@@ -112,42 +113,49 @@ class AgentConsumer(AsyncWebsocketConsumer):
         success = data.get("success")
         message = data.get("message", "")
         post_url = data.get("post_url")
+        platform_post_id = data.get("platform_post_id")   # NEW
 
         try:
-            post = Post.objects.get(id=post_id, user_id=self.user_id)
+            post = Post.objects.get(
+                id=post_id,
+                user_id=self.user_id
+            )
 
             if success:
                 post.status = "posted"
 
                 if post_url:
                     post.post_url = post_url
+
+                if platform_post_id:
+                    post.platform_post_id = platform_post_id
+
             else:
                 post.status = "failed"
 
-            try:
-                post.error_message = None if success else message
+            post.error_message = None if success else message
 
-                update_fields = ["status", "error_message"]
+            update_fields = ["status", "error_message"]
 
-                if success and post_url:
-                    update_fields.append("post_url")
+            if success and post_url:
+                update_fields.append("post_url")
 
-                post.save(update_fields=update_fields)
+            if success and platform_post_id:
+                update_fields.append("platform_post_id")
 
-            except Exception:
-                update_fields = ["status"]
-
-                if success and post_url:
-                    update_fields.append("post_url")
-
-                post.save(update_fields=update_fields)
+            post.save(update_fields=update_fields)
 
             print(f"✅ Post {post_id} status updated to {post.status}")
+
             if post_url:
                 print(f"🔗 Post URL saved: {post_url}")
 
+            if platform_post_id:
+                print(f"🆔 Platform Post ID saved: {platform_post_id}")
+
         except Post.DoesNotExist:
             print(f"❌ Post {post_id} not found")
+
         except Exception as e:
             print("❌ Status update error:", str(e))
 
@@ -157,7 +165,7 @@ class AgentConsumer(AsyncWebsocketConsumer):
         from apps.comments.models import PostComment
         try:
             comment = PostComment.objects.get(id=comment_id)
-            comment.status = "replied"
+            comment.status = "reply_sent"
             comment.save(update_fields=["status"])
             print(f"✅ Comment {comment_id} marked as replied")
         except PostComment.DoesNotExist:
@@ -187,26 +195,37 @@ class AgentConsumer(AsyncWebsocketConsumer):
 
 
     async def send_reply_comment(self, event):
+            print("🔥 send_reply_comment called")
+            print(event)
 
-        await self.send(text_data=json.dumps({
-            "type": "reply_comment",
-
-            "comment_id": event["comment_id"],
-            "platform": event["platform"],
-            "reply_text": event["reply_text"],
-            "post_url": event["post_url"],
-        }))
+            await self.send(text_data=json.dumps({
+                "type": "reply_comment",
+                "comment_id": event["comment_id"],
+                "platform": event["platform"],
+                "reply_text": event["reply_text"],
+                "post_url": event["post_url"],
+                "author": event.get("author"),
+                "comment_text": event.get("comment_text"),
+            }))
 
     @sync_to_async
     def handle_comment_result(self, data):
 
+        # pyrfly: ignore [missing-import]
         # pyrefly: ignore [missing-import]
         from apps.comments.services import create_comment_if_new
 
         post_id = data.get("post_id")
         comments = data.get("comments", [])
         
-        print(f"📥 Received {len(comments)} comments from agent for post {post_id}")
+        if isinstance(comments, int):
+            print(f"📥 Received comment count {comments} from agent for post {post_id}")
+            comments_list = []
+        elif isinstance(comments, list):
+            print(f"📥 Received {len(comments)} comments from agent for post {post_id}")
+            comments_list = comments
+        else:
+            comments_list = []
         
         new_comments = []
         post_url = data.get("post_url")
@@ -220,7 +239,7 @@ class AgentConsumer(AsyncWebsocketConsumer):
             if not post_url:
                 post_url = getattr(post, "post_url", "")
 
-            for item in comments:
+            for item in comments_list:
                 author = item.get("author")
                 text = item.get("text")
                 print(f"🧐 Processing comment: [{author}] - {text}")

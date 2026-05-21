@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'apps.accounts',
     'apps.posts',
+    'apps.comments',
     'apps.scheduler',
     'django_celery_beat',
     'corsheaders',
@@ -52,6 +53,10 @@ INSTALLED_APPS = [
 
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
 CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
+
+# CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+
 CELERY_TIMEZONE = "Asia/Kolkata"
 CELERY_ENABLE_UTC = False
 
@@ -164,6 +169,13 @@ DATABASES = {
         'PORT': '5432',
     }
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
 
 
 # Password validation

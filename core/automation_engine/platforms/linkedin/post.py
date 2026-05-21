@@ -565,6 +565,48 @@ def click_final_post_button(driver, textbox=None, retries=8):
 
     return verify_linkedin_post_success(driver, timeout=12)
 
+def extract_linkedin_post_data(driver):
+    try:
+        time.sleep(5)
+
+        # try finding actual post links
+        links = driver.find_elements(
+            By.XPATH,
+            "//a[contains(@href,'/feed/update/') or contains(@href,'/posts/')]"
+        )
+
+        for link in links:
+            href = link.get_attribute("href")
+
+            if href and "linkedin.com" in href:
+                print("FOUND LINK:", href)
+
+                platform_post_id = None
+
+                if "activity:" in href:
+                    platform_post_id = href.split("activity:")[-1].split("/")[0]
+
+                return href, platform_post_id
+
+        # fallback using data-urn
+        article = driver.find_element(
+            By.XPATH,
+            "//div[contains(@data-urn,'urn:li:activity')]"
+        )
+
+        urn = article.get_attribute("data-urn")
+        platform_post_id = urn.split(":")[-1]
+
+        post_url = (
+            f"https://www.linkedin.com/feed/update/"
+            f"urn:li:activity:{platform_post_id}/"
+        )
+
+        return post_url, platform_post_id
+
+    except Exception as e:
+        print("extract_linkedin_post_data failed:", e)
+        return None, None
 
 def post_to_linkedin(driver, post):
     try:
@@ -652,18 +694,34 @@ def post_to_linkedin(driver, post):
         time.sleep(3)
 
         if verify_linkedin_post_success(driver, timeout=8):
+
+            post_url, platform_post_id = extract_linkedin_post_data(driver)
+
+            print("DEBUG LinkedIn post_url:", post_url)
+            print("DEBUG LinkedIn platform_post_id:", platform_post_id)
+            
+            
             return {
                 "success": True,
                 "message": "Post submitted successfully",
+                 "post_url": post_url,
+                "platform_post_id": platform_post_id,
             }
 
         return {
             "success": False,
             "message": "Post trigger happened, but LinkedIn did not confirm success",
+            "post_url": None,
+            "platform_post_id": None,
         }
 
     except Exception as e:
         return {
             "success": False,
             "message": str(e),
+            "post_url": None,
+            "platform_post_id": None,
         }
+
+def create_linkedin_post(driver, post):
+    return post_to_linkedin(driver, post)

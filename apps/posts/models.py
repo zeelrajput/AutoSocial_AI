@@ -41,6 +41,19 @@ class Post(models.Model):
     # ✅ social media published post URL
     post_url = models.URLField(blank=True, null=True)
 
+    platform_post_id = models.CharField(
+    max_length=255,
+    null=True,
+    blank=True
+    )
+
+    error_message = models.TextField(
+    null=True,
+    blank=True
+)
+
+
+
 class PostMedia(models.Model):
     post = models.ForeignKey(
         Post,

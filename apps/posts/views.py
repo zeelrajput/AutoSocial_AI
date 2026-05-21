@@ -8,6 +8,11 @@ from apps.posts.models import Post, PostMedia
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+
+
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -225,3 +230,51 @@ Hashtags: ...
             "message": "Something went wrong",
             "errors": str(e)
         }, status=400)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def trigger_comment_check(request):
+    try:
+        post_id = request.data.get("post_id")
+
+        post = Post.objects.get(id=post_id, user=request.user)
+
+        # ✅ HARD VALIDATION
+        if not post.post_url:
+            return JsonResponse({
+                "success": False,
+                "message": "Missing post_url"
+            }, status=400)
+
+        if "linkedin.com" not in post.post_url:
+            return JsonResponse({
+                "success": False,
+                "message": "Invalid LinkedIn URL"
+            }, status=400)
+
+        post_url = post.post_url.strip()
+
+        print("🚀 DEBUG URL:", post_url)
+
+        channel_layer = get_channel_layer()
+
+        async_to_sync(channel_layer.group_send)(
+            f"agent_{request.user.id}",
+            {
+                "type": "send_check_comments",
+                "post_id": post.id,
+                "platform": post.platform,
+                "post_url": post_url,
+            }
+        )
+
+        return JsonResponse({
+            "success": True,
+            "message": "Comment check triggered"
+        })
+
+    except Post.DoesNotExist:
+        return JsonResponse({
+            "success": False,
+            "message": "Post not found"
+        }, status=404)

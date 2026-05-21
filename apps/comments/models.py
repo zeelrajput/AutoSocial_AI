@@ -34,12 +34,22 @@ class PostComment(models.Model):
 
     platform = models.CharField(max_length=50)
 
+    # NEW
+    comment_id = models.CharField(
+                max_length=255,
+                unique=True,
+                null=True,
+                blank=True
+            )
+
+    # CHANGE
     comment_author = models.CharField(
         max_length=255,
         blank=True,
         null=True
     )
 
+    # CHANGE
     comment_text = models.TextField()
 
     comment_hash = models.CharField(
