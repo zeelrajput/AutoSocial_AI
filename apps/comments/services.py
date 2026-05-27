@@ -35,7 +35,7 @@ def create_comment_if_new(post, platform, author, text):
         user=post.user,
         post=post,
         platform=platform,
-        comment_id=f"{post.id}_{author}",
+        comment_id=f"{post.id}_{author}_{comment_hash[:10]}",
         comment_author=author,
         comment_text=text,
         comment_hash=comment_hash,

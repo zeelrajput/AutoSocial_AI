@@ -1,26 +1,33 @@
 import asyncio
-import os
 import sys
+import os
 from pathlib import Path
 
+# -------------------------------------------------
+# FIX FOR EXE + DJANGO
+# -------------------------------------------------
+
 if getattr(sys, 'frozen', False):
-    PROJECT_ROOT = Path(sys._MEIPASS)
+    BASE_DIR = Path(sys._MEIPASS)
 else:
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    BASE_DIR = Path(__file__).resolve().parents[2]
 
-sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(BASE_DIR))
 
-os.environ.setdefault(
-    "DJANGO_SETTINGS_MODULE",
-    "config.settings"
-)
+# Django settings
+os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
 
+import django
+django.setup()
+
+# Import AFTER setup
 from core.agent.agent import main
 
 LOCAL_BASE_URL = "http://127.0.0.1:8000"
 
-if __name__ == "__main__":
+# -------------------------------------------------
 
+if __name__ == "__main__":
     try:
         asyncio.run(main(LOCAL_BASE_URL))
 
@@ -29,4 +36,5 @@ if __name__ == "__main__":
 
     except Exception as e:
         print(f"Error: {e}")
+        input("Press Enter to exit...")
         sys.exit(1)

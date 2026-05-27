@@ -26,7 +26,6 @@ from apps.posts.models import Post
 from .models import PostComment, CommentSettings
 from .ai_reply import generate_ai_reply
 
-
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def generate_reply_api(request):
@@ -52,6 +51,8 @@ def generate_reply_api(request):
 
         comment = PostComment.objects.filter(
             post=post,
+            status="new",
+            reply_text__isnull=True,
         ).order_by("-created_at").first()
 
         if not comment:

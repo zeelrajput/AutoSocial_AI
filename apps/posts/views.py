@@ -234,27 +234,92 @@ Hashtags: ...
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def trigger_comment_check(request):
+
     try:
+
         post_id = request.data.get("post_id")
 
-        post = Post.objects.get(id=post_id, user=request.user)
+        post = Post.objects.get(
+            id=post_id,
+            user=request.user
+        )
 
-        # ✅ HARD VALIDATION
+        # =====================================================
+        # VALIDATION
+        # =====================================================
+
         if not post.post_url:
+
             return JsonResponse({
                 "success": False,
                 "message": "Missing post_url"
             }, status=400)
 
-        if "linkedin.com" not in post.post_url:
-            return JsonResponse({
-                "success": False,
-                "message": "Invalid LinkedIn URL"
-            }, status=400)
+        platform = post.platform.lower()
 
         post_url = post.post_url.strip()
 
+        # =====================================================
+        # LINKEDIN VALIDATION
+        # =====================================================
+
+        if platform == "linkedin":
+
+            if "linkedin.com" not in post_url:
+
+                return JsonResponse({
+                    "success": False,
+                    "message": "Invalid LinkedIn URL"
+                }, status=400)
+
+        # =====================================================
+        # INSTAGRAM VALIDATION
+        # =====================================================
+
+        elif platform == "instagram":
+
+            if "instagram.com" not in post_url:
+
+                return JsonResponse({
+                    "success": False,
+                    "message": "Invalid Instagram URL"
+                }, status=400)
+
+        # ====================================================
+        # FACEBOOK VALIDATION
+        # ====================================================
+
+        elif platform == "facebook":
+
+            if "facebook.com" not in post_url:
+
+                return JsonResponse({
+                    "success": False,
+                    "message": "Invalid Facebook URL"
+                }, status=400)
+            
+
+        # =====================================================
+        # UNSUPPORTED PLATFORM
+        # =====================================================
+
+        else:
+
+            return JsonResponse({
+                "success": False,
+                "message": f"Unsupported platform: {platform}"
+            }, status=400)
+
+        # =====================================================
+        # DEBUG
+        # =====================================================
+
+        print("🚀 PLATFORM:", platform)
         print("🚀 DEBUG URL:", post_url)
+
+        # =====================================================
+        # SEND TO AGENT
+        # =====================================================
 
         channel_layer = get_channel_layer()
 
@@ -263,7 +328,7 @@ def trigger_comment_check(request):
             {
                 "type": "send_check_comments",
                 "post_id": post.id,
-                "platform": post.platform,
+                "platform": platform,
                 "post_url": post_url,
             }
         )
@@ -274,7 +339,15 @@ def trigger_comment_check(request):
         })
 
     except Post.DoesNotExist:
+
         return JsonResponse({
             "success": False,
             "message": "Post not found"
         }, status=404)
+
+    except Exception as e:
+
+        return JsonResponse({
+            "success": False,
+            "message": str(e)
+        }, status=500)

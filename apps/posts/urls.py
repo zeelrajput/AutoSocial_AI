@@ -8,4 +8,3 @@ urlpatterns = [
     path("check-comments/", views.trigger_comment_check),
     # path("generate-reply/", views.generate_reply_api),
 ]
-
