@@ -12,10 +12,6 @@ venv/
 db.sqlite3
 media/
 
-# Python
-__pycache__/
-*.py[cod]
-
 # Environment
 .env
 
