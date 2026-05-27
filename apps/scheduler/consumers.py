@@ -195,6 +195,8 @@ class AgentConsumer(AsyncWebsocketConsumer):
             "platform": event["platform"],
             "reply_text": event["reply_text"],
             "post_url": event["post_url"],
+            "author": event.get("author"),
+            "comment_text": event.get("comment_text"),
         }))
 
     @sync_to_async

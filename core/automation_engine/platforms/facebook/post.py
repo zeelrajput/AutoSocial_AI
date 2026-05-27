@@ -22,6 +22,34 @@ from .utils import (
     wait_for_uploaded_image_ready,
 )
 
+def find_facebook_post_url(driver, timeout=20):
+    end_time = time.time() + timeout
+
+    xpaths = [
+        "//a[contains(@href, '/posts/')]",
+        "//a[contains(@href, 'permalink.php')]",
+        "//a[contains(@href, 'story_fbid=')]",
+        "//a[contains(@href, '/photo/?fbid=')]",
+        "//a[contains(@href, '/share/')]",
+    ]
+
+    while time.time() < end_time:
+        for xpath in xpaths:
+            try:
+                links = driver.find_elements(By.XPATH, xpath)
+
+                for link in links:
+                    href = link.get_attribute("href")
+
+                    if href and "facebook.com" in href:
+                        return href.split("&__cft__")[0].split("?__cft__")[0]
+            except Exception:
+                pass
+
+        time.sleep(1)
+
+    return driver.current_url
+
 
 def post_to_facebook(driver, post):
     try:
@@ -306,10 +334,23 @@ def post_to_facebook(driver, post):
             }
 
         medium_pause()
+        time.sleep(3)
+
+        post_url = find_facebook_post_url(driver, timeout=20)
+
+        try:
+            if post_url and hasattr(post, "post_url"):
+                post.post_url = post_url
+
+                if hasattr(post, "save"):
+                    post.save(update_fields=["post_url"])
+        except Exception:
+            pass
 
         return {
             "success": True,
             "message": "Facebook post successful",
+            "post_url": post_url,
         }
 
     except Exception as e:
