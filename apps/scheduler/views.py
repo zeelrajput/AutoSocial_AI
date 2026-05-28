@@ -8,6 +8,7 @@ from channels.layers import get_channel_layer
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 
+# pyrefly: ignore [missing-import]
 from apps.posts.models import Post
 
 

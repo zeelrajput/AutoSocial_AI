@@ -1,7 +1,12 @@
+import os
+import django
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+django.setup()
+
 import asyncio
 import contextlib
 import json
-import os
 import sys
 import getpass
 from pathlib import Path
@@ -22,9 +27,6 @@ from core.automation_engine.executor.comment_task_runner import (
     run_reply_comment_task,
 )
 
-browser_driver = None
-browser_manager = None
-
 from core.automation_engine.executor.task_runner import run_task
 from core.automation_engine.browser.browser_manager import BrowserManager
 
@@ -37,14 +39,21 @@ CONFIG_FILE = APP_DATA_DIR / "agent_config.json"
 def log(message):
     print(message)
 
+def safe_json(obj):
+    try:
+        return json.loads(json.dumps(obj, default=str))
+    except Exception:
+        return str(obj)
+
+
+def safe_json(obj):
+    try:
+        return json.loads(json.dumps(obj, default=str))
+    except Exception:
+        return obj
+
 
 def make_ws_url(base_url, agent_token):
-    """
-    Convert normal HTTP/HTTPS base URL into WebSocket URL.
-    http  -> ws
-    https -> wss
-    """
-
     if base_url.startswith("https://"):
         ws_base_url = base_url.replace("https://", "wss://", 1)
     else:
@@ -54,14 +63,10 @@ def make_ws_url(base_url, agent_token):
 
 
 def get_agent_token(base_url):
-    import requests
-    import getpass
-
     email = input("Enter email: ")
     password = getpass.getpass("Enter password: ")
 
     login_url = f"{base_url}/accounts/login/"
-
     print(f"🔐 Login URL: {login_url}")
 
     response = requests.post(
@@ -78,25 +83,19 @@ def get_agent_token(base_url):
     print("📡 Status Code:", response.status_code)
     print("📄 Response Text:", response.text[:500])
 
-    try:
-        data = response.json()
-    except Exception:
-        raise Exception(
-            "Server did not return JSON. Check login API URL, server error, or CSRF/API issue."
-        )
+    data = response.json()
 
     if response.status_code != 200:
         raise Exception(data.get("error", "Login failed"))
 
+    # ✅ FIXED: only accept agent_token
     token = (
         data.get("agent_token")
         or data.get("data", {}).get("agent_token")
-        or data.get("access")
-        or data.get("data", {}).get("access")
     )
 
     if not token:
-        raise Exception("Token not found in login response")
+        raise Exception("agent_token not found in response")
 
     print("✅ Login successful")
     return token
@@ -139,10 +138,6 @@ def open_profile_for_platform_login(user_data_dir, profile_directory):
 
 
 def load_or_create_profile():
-    """
-    Load saved Chrome profile or allow user to change it.
-    """
-
     if CONFIG_FILE.exists():
         print("\n⚙️ Chrome Profile Found")
         print("1. Use saved profile")
@@ -175,7 +170,9 @@ def load_or_create_profile():
 
     return user_data_dir, profile_directory
 
+
 import tempfile
+
 
 def download_media_file(media_url):
     temp_dir = Path(tempfile.gettempdir()) / "autosocial_media"
@@ -190,11 +187,8 @@ def download_media_file(media_url):
     local_path.write_bytes(response.content)
     return str(local_path)
 
-def run_task_silently(post_id, platform, caption, media, browser):
-    """
-    Run automation silently but with correct browser manager.
-    """
 
+def run_task_silently(post_id, platform, caption, media, browser):
     with open(os.devnull, "w", encoding="utf-8") as devnull:
         with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
             return run_task(post_id, platform, caption, media, browser)
@@ -230,6 +224,7 @@ async def main(base_url: str):
                     ping_timeout=None,
                     ssl=ssl_context,
                 ) as websocket:
+
                     log("✅ Agent connected")
 
                     async for message in websocket:
@@ -272,15 +267,14 @@ async def main(base_url: str):
                                     "post_url": result.get("post_url"),
                                 }))
 
-                                if result.get("success"):
-                                    log("✅ Automation completed")
-                                else:
-                                    log("❌ Automation failed")
+                                log("✅ Automation completed" if result.get("success") else "❌ Automation failed")
 
                             elif task_type == "check_comments":
                                 post_url = data.get("post_url")
+
+                                driver = browser_manager.start_browser()
+
                                 try:
-                                    driver = browser_manager.start_browser()
                                     comments = await asyncio.to_thread(
                                         run_check_comments_task,
                                         driver,
@@ -292,21 +286,25 @@ async def main(base_url: str):
                                         "type": "comment_check_result",
                                         "post_id": post_id,
                                         "platform": platform,
-                                        "comments": comments,
+                                        "comments": safe_json(comments),
                                     }))
+
                                     log("💬 Comments checked")
+
                                 finally:
                                     browser_manager.close_browser()
 
                             elif task_type == "reply_comment":
+                                platform = data.get("platform")
                                 post_url = data.get("post_url")
                                 reply_text = data.get("reply_text")
                                 author = data.get("author")
                                 comment_text = data.get("comment_text")
                                 comment_id = data.get("comment_id")
 
+                                driver = browser_manager.start_browser()
+
                                 try:
-                                    driver = browser_manager.start_browser()
                                     result = await asyncio.to_thread(
                                         run_reply_comment_task,
                                         driver,
@@ -319,11 +317,22 @@ async def main(base_url: str):
 
                                     await websocket.send(json.dumps({
                                         "type": "reply_comment_result",
-                                        "success": result.get("success"),
-                                        "message": result.get("message"),
+                                        "success": result.get("success", False),
+                                        "message": result.get("message", ""),
                                         "comment_id": comment_id,
                                     }))
+
                                     log("🤖 Reply task completed")
+
+                                except Exception as e:
+                                    await websocket.send(json.dumps({
+                                        "type": "reply_comment_result",
+                                        "success": False,
+                                        "message": str(e),
+                                        "comment_id": comment_id,
+                                    }))
+                                    log(f"❌ Reply failed: {e}")
+
                                 finally:
                                     browser_manager.close_browser()
 
@@ -334,8 +343,7 @@ async def main(base_url: str):
                                 "success": False,
                                 "message": str(e),
                             }))
-                            log("❌ Automation failed")
-                            log(f"Error: {e}")
+                            log(f"❌ Automation failed: {e}")
 
             except (websockets.ConnectionClosed, Exception) as e:
                 log(f"❌ Connection error: {e}")
@@ -344,8 +352,6 @@ async def main(base_url: str):
 
     except KeyboardInterrupt:
         log("\nAgent stopped by user.")
-    except asyncio.CancelledError:
-        log("\nAgent cancelled.")
     except Exception as e:
         log(f"❌ Fatal error: {e}")
     finally:
