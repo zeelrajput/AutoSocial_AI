@@ -293,6 +293,33 @@ class InstagramCommentAutomation:
 
         return None
 
+def get_instagram_logged_in_username(driver):
+    try:
+        current_url = driver.current_url.strip("/")
+        parts = current_url.split("/")
+
+        if "instagram.com" in current_url and len(parts) >= 4:
+            username = parts[3]
+
+            ignored = {
+                "",
+                "p",
+                "reel",
+                "explore",
+                "stories",
+                "accounts",
+                "direct",
+            }
+
+            if username not in ignored:
+                print("✅ Instagram post owner detected:", username)
+                return username
+
+        return ""
+
+    except Exception as e:
+        print("Could not detect Instagram post owner:", e)
+        return ""
 
 def check_instagram_comments(
     driver,
@@ -338,7 +365,6 @@ def check_instagram_comments(
         ignored_text = {
             "Reply",
             "View insights",
-            "More posts from zeel_enact_consult",
             "Meta",
             "About",
             "Blog",
@@ -349,7 +375,10 @@ def check_instagram_comments(
             "Terms",
         }
 
-        own_username = "zeel_enact_consult"
+        own_username = get_instagram_logged_in_username(driver)
+
+        if own_username:
+            ignored_text.add(f"More posts from {own_username}")
 
         comments = []
         seen = set()
@@ -364,10 +393,14 @@ def check_instagram_comments(
             author = lines[i - 1]
             comment_text = lines[i + 1]
 
+            if i < 5:
+                continue
+
             if author in ignored_authors:
                 continue
 
-            if author == own_username:
+            if own_username and author == own_username: 
+                # print("⏭️ Skipping post owner / own comment:", author)       
                 continue
 
             if comment_text in ignored_text:

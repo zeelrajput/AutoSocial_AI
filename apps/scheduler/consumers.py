@@ -59,6 +59,8 @@ class AgentConsumer(AsyncWebsocketConsumer):
 
         await self.accept()
 
+        self.comment_reply_options = {}
+
         await self.send(text_data=json.dumps({
             "type": "connected",
             "message": "Agent connected successfully",
@@ -84,7 +86,7 @@ class AgentConsumer(AsyncWebsocketConsumer):
             for c in new_comments:
                 if c.get("reply_text") and post_url:
                     # Add random delay (20–90 sec) for natural behavior
-                    delay = random.randint(20, 90)
+                    delay = random.randint(3, 8)            
                     print(f"⏳ Waiting {delay} seconds before sending auto-reply to {c.get('author')}...")
                     await asyncio.sleep(delay)
                     
@@ -176,13 +178,18 @@ class AgentConsumer(AsyncWebsocketConsumer):
         }))
 
     async def send_check_comments(self, event):
+        self.comment_reply_options[event["post_id"]] = {
+            "reply_mode": event.get("reply_mode", "ai"),
+            "reply_text": event.get("reply_text", ""),
+        }
 
         await self.send(text_data=json.dumps({
             "type": "check_comments",
-
             "post_id": event["post_id"],
             "platform": event["platform"],
             "post_url": event["post_url"],
+            "auto_reply": event.get("auto_reply", True),
+            "reply_text": event.get("reply_text"),
         }))
 
 
@@ -235,7 +242,33 @@ class AgentConsumer(AsyncWebsocketConsumer):
                 )
 
                 if comment:
+                    options = getattr(self, "comment_reply_options", {}).get(post_id, {})
+                    reply_mode = options.get("reply_mode", "ai")
+                    request_reply_text = options.get("reply_text", "")
+
+                    if reply_mode == "ai":
+                        if not comment.reply_text:
+                            from apps.comments.ai_reply import generate_ai_reply
+
+                            ai_data = generate_ai_reply(
+                                comment_text=comment.comment_text,
+                                author=comment.comment_author,
+                                post_caption=post.caption,
+                                previous_comments=[],
+                                platform=post.platform,
+                                mode="AI",
+                            )
+
+                            comment.reply_text = ai_data.get("reply", "Thank you!")
+                            comment.reply_type = "ai"
+                            comment.save(update_fields=["reply_text", "reply_type"])
+                    else:
+                        comment.reply_text = request_reply_text
+                        comment.reply_type = "predefined"
+                        comment.save(update_fields=["reply_text", "reply_type"])
+
                     print(f"✅ New comment saved: {comment.id}. AI Reply: {comment.reply_text}")
+
                     new_comments.append({
                         "id": comment.id,
                         "platform": comment.platform,

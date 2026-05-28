@@ -417,17 +417,18 @@ def reply_linkedin_comment(driver, post_url, reply_text=None, author=None, comme
 
         log("💬 New comment found")
 
-        ai_data = generate_ai_reply(
-            comment_text=comment_text,
-            author="user",
-            post_caption="",
-            previous_comments=[],
-            platform="linkedin"
-        )
+        if not reply_text:
+            ai_data = generate_ai_reply(
+                comment_text=comment_text,
+                author=author or "user",
+                post_caption="",
+                previous_comments=[],
+                platform="linkedin"
+            )
 
-        reply_text = ai_data.get("reply", "Thank you!")
+            reply_text = ai_data.get("reply") or "Thank you!"
 
-        log("🤖 AI reply generated")
+        log(f"🤖 Reply text: {reply_text}")
 
         clicked = click_reply_button(driver, comment_element)
 

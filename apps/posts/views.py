@@ -239,6 +239,24 @@ def trigger_comment_check(request):
 
         post_id = request.data.get("post_id")
 
+        reply_mode = request.data.get("mode", "ai").lower()
+        reply_text = request.data.get("reply_text", "")
+
+        if reply_mode == "predefined":
+            reply_mode = "predefine"
+
+        if reply_mode not in ["ai", "manual", "predefine"]:
+            return JsonResponse({
+                "success": False,
+                "message": "Invalid mode. Use ai, manual, or predefine"
+            }, status=400)
+
+        if reply_mode in ["manual", "predefine"] and not reply_text:
+            return JsonResponse({
+                "success": False,
+                "message": "reply_text is required for manual/predefine mode"
+            }, status=400)
+
         post = Post.objects.get(
             id=post_id,
             user=request.user
@@ -324,14 +342,16 @@ def trigger_comment_check(request):
         channel_layer = get_channel_layer()
 
         async_to_sync(channel_layer.group_send)(
-            f"agent_{request.user.id}",
-            {
-                "type": "send_check_comments",
-                "post_id": post.id,
-                "platform": platform,
-                "post_url": post_url,
-            }
-        )
+                f"agent_{request.user.id}",
+                {
+                    "type": "send_check_comments",
+                    "post_id": post.id,
+                    "platform": platform,
+                    "post_url": post_url,
+                    "reply_mode": reply_mode,
+                    "reply_text": reply_text,
+                }
+            )
 
         return JsonResponse({
             "success": True,

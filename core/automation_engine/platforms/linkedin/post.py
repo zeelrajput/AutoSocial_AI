@@ -25,10 +25,11 @@ from .utils import (
 
 
 def click_element_robustly(driver, element, name="Element"):
-    for action_name, action in [
-        ("safe_click", lambda: safe_click(driver, element)),
-        ("js_click", lambda: driver.execute_script("arguments[0].click();", element)),
-        ("normal_click", lambda: element.click()),
+    for action in [
+        lambda: safe_click(driver, element),
+        lambda: ActionChains(driver).move_to_element(element).pause(0.3).click().perform(),
+        lambda: element.click(),
+        lambda: driver.execute_script("arguments[0].click();", element),
     ]:
         try:
             result = action()
@@ -427,22 +428,25 @@ def find_inline_or_modal_post_button(driver, textbox):
 
             function isVisible(el) {
                 if (!el) return false;
-
                 const r = el.getBoundingClientRect();
                 const s = window.getComputedStyle(el);
+                return r.width > 5 &&
+                       r.height > 5 &&
+                       s.display !== 'none' &&
+                       s.visibility !== 'hidden' &&
+                       s.opacity !== '0';
+            }
 
-                return (
-                    r.width > 5 &&
-                    r.height > 5 &&
-                    s.display !== 'none' &&
-                    s.visibility !== 'hidden' &&
-                    s.opacity !== '0'
-                );
+            function clickable(el) {
+                return el.closest("button, div[role='button']");
             }
 
             function isEnabled(el) {
                 if (!el) return false;
-                return !el.disabled && el.getAttribute('aria-disabled') !== 'true';
+                return !el.disabled &&
+                       el.getAttribute('aria-disabled') !== 'true' &&
+                       !el.className.toString().includes('disabled') &&
+                       !el.className.toString().includes('artdeco-button--disabled');
             }
 
             function textOf(el) {
@@ -450,89 +454,49 @@ def find_inline_or_modal_post_button(driver, textbox):
                     (el.innerText || '') + ' ' +
                     (el.textContent || '') + ' ' +
                     (el.getAttribute('aria-label') || '') + ' ' +
-                    (el.getAttribute('title') || '') + ' ' +
-                    (el.getAttribute('data-control-name') || '')
+                    (el.getAttribute('title') || '')
                 ).replace(/\\s+/g, ' ').trim().toLowerCase();
             }
 
-            function blocked(text) {
-                const bad = [
-                    'start a post',
-                    'create a post',
-                    'schedule post',
-                    'scheduled post',
-                    'view all scheduled posts',
-                    'photo',
-                    'video',
-                    'add media',
-                    'next',
-                    'back',
-                    'close'
-                ];
-
-                return bad.some(x => text.includes(x));
-            }
-
-            function matchesPost(text) {
-                return text === 'post' ||
-                       text.startsWith('post ') ||
-                       text.endsWith(' post') ||
-                       text.includes(' post ');
-            }
-
-            if (!textbox) return null;
-
-            let node = textbox;
-
-            for (let depth = 0; depth < 12 && node; depth++) {
-                const candidates = Array.from(
-                    node.querySelectorAll("button, div[role='button'], [aria-label], [title]")
-                );
-
-                for (const el of candidates) {
-                    const t = textOf(el);
-
-                    if (!isVisible(el) || !isEnabled(el)) continue;
-                    if (blocked(t)) continue;
-
-                    if (matchesPost(t)) return el;
-                }
-
-                node = node.parentElement;
-            }
-
-            const tr = textbox.getBoundingClientRect();
-
-            const all = Array.from(document.querySelectorAll(
-                "button, div[role='button'], [aria-label], [title]"
-            )).filter(el => isVisible(el) && isEnabled(el));
-
-            let best = null;
-            let bestScore = Infinity;
-
-            for (const el of all) {
+            function isPostButton(el) {
                 const t = textOf(el);
+                if (!t) return false;
 
-                if (blocked(t)) continue;
-                if (!matchesPost(t)) continue;
+                if (t.includes('start a post')) return false;
+                if (t.includes('schedule')) return false;
+                if (t.includes('photo')) return false;
+                if (t.includes('video')) return false;
+                if (t.includes('next')) return false;
+                if (t.includes('back')) return false;
+                if (t.includes('close')) return false;
 
-                const r = el.getBoundingClientRect();
-                const score = Math.abs(r.left - tr.left) + Math.abs(r.top - tr.bottom);
-
-                if (score < bestScore) {
-                    best = el;
-                    bestScore = score;
-                }
+                return t === 'post' || t.startsWith('post ');
             }
 
-            return best;
+            const scope =
+                textbox.closest('[role="dialog"]') ||
+                textbox.closest('.share-box') ||
+                document;
+
+            const raw = Array.from(scope.querySelectorAll(
+                "button, div[role='button'], [aria-label], [title]"
+            ));
+
+            for (const el of raw) {
+                const btn = clickable(el);
+                if (!btn) continue;
+                if (!isVisible(btn)) continue;
+                if (!isEnabled(btn)) continue;
+                if (isPostButton(btn)) return btn;
+            }
+
+            return null;
             """,
             textbox,
         )
-
     except Exception:
         return None
-
+    
 
 def click_final_post_button(driver, textbox=None, retries=8):
     time.sleep(8)
@@ -565,48 +529,94 @@ def click_final_post_button(driver, textbox=None, retries=8):
 
     return verify_linkedin_post_success(driver, timeout=12)
 
-def extract_linkedin_post_data(driver):
-    try:
+def get_latest_post_url_after_publish(driver, timeout=60):
+    end_time = time.time() + timeout
+
+    activity_pages = [
+        "https://www.linkedin.com/in/me/recent-activity/all/",
+        "https://www.linkedin.com/in/me/recent-activity/posts/",
+    ]
+
+    while time.time() < end_time:
+        for page_url in activity_pages:
+            try:
+                driver.get(page_url)
+                time.sleep(6)
+
+                post_url = driver.execute_script(
+                    """
+                    function normalize(url) {
+                        if (!url) return null;
+
+                        const urnMatch = url.match(/urn:li:activity:(\\d+)/);
+                        if (urnMatch) {
+                            return `https://www.linkedin.com/feed/update/urn:li:activity:${urnMatch[1]}`;
+                        }
+
+                        const activityMatch = url.match(/activity[-:](\\d+)/);
+                        if (activityMatch) {
+                            return `https://www.linkedin.com/feed/update/urn:li:activity:${activityMatch[1]}`;
+                        }
+
+                        if (url.includes('/feed/update/')) {
+                            return url.split('?')[0].replace(/\\/$/, '');
+                        }
+
+                        return null;
+                    }
+
+                    const selectors = [
+                        "[data-urn*='urn:li:activity']",
+                        "[data-id*='urn:li:activity']",
+                        "div[data-activity-urn]",
+                        "article",
+                        ".feed-shared-update-v2"
+                    ];
+
+                    for (const selector of selectors) {
+                        const items = Array.from(document.querySelectorAll(selector));
+
+                        for (const item of items) {
+                            const attrs = [
+                                item.getAttribute('data-urn'),
+                                item.getAttribute('data-id'),
+                                item.getAttribute('data-activity-urn')
+                            ];
+
+                            for (const attr of attrs) {
+                                const normalized = normalize(attr);
+                                if (normalized) return normalized;
+                            }
+
+                            const links = Array.from(item.querySelectorAll("a[href]"));
+
+                            for (const link of links) {
+                                const normalized = normalize(link.href);
+                                if (normalized) return normalized;
+                            }
+                        }
+                    }
+
+                    const allLinks = Array.from(document.querySelectorAll("a[href]"));
+
+                    for (const link of allLinks) {
+                        const normalized = normalize(link.href);
+                        if (normalized) return normalized;
+                    }
+
+                    return null;
+                    """
+                )
+
+                if post_url:
+                    return post_url
+
+            except Exception:
+                pass
+
         time.sleep(5)
 
-        # try finding actual post links
-        links = driver.find_elements(
-            By.XPATH,
-            "//a[contains(@href,'/feed/update/') or contains(@href,'/posts/')]"
-        )
-
-        for link in links:
-            href = link.get_attribute("href")
-
-            if href and "linkedin.com" in href:
-                print("FOUND LINK:", href)
-
-                platform_post_id = None
-
-                if "activity:" in href:
-                    platform_post_id = href.split("activity:")[-1].split("/")[0]
-
-                return href, platform_post_id
-
-        # fallback using data-urn
-        article = driver.find_element(
-            By.XPATH,
-            "//div[contains(@data-urn,'urn:li:activity')]"
-        )
-
-        urn = article.get_attribute("data-urn")
-        platform_post_id = urn.split(":")[-1]
-
-        post_url = (
-            f"https://www.linkedin.com/feed/update/"
-            f"urn:li:activity:{platform_post_id}/"
-        )
-
-        return post_url, platform_post_id
-
-    except Exception as e:
-        print("extract_linkedin_post_data failed:", e)
-        return None, None
+    return None
 
 def post_to_linkedin(driver, post):
     try:
@@ -694,34 +704,24 @@ def post_to_linkedin(driver, post):
         time.sleep(3)
 
         if verify_linkedin_post_success(driver, timeout=8):
+            log("🔗 Getting LinkedIn post URL...")
+            post_url = get_latest_post_url_after_publish(driver, timeout=60)
+            log(f"🔗 LinkedIn post URL: {post_url}")
 
-            post_url, platform_post_id = extract_linkedin_post_data(driver)
 
-            print("DEBUG LinkedIn post_url:", post_url)
-            print("DEBUG LinkedIn platform_post_id:", platform_post_id)
-            
-            
             return {
                 "success": True,
                 "message": "Post submitted successfully",
-                 "post_url": post_url,
-                "platform_post_id": platform_post_id,
+                "post_url": post_url,
             }
 
         return {
             "success": False,
             "message": "Post trigger happened, but LinkedIn did not confirm success",
-            "post_url": None,
-            "platform_post_id": None,
         }
 
     except Exception as e:
         return {
             "success": False,
             "message": str(e),
-            "post_url": None,
-            "platform_post_id": None,
         }
-
-def create_linkedin_post(driver, post):
-    return post_to_linkedin(driver, post)
