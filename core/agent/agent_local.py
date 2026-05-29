@@ -15,7 +15,10 @@ else:
 sys.path.insert(0, str(BASE_DIR))
 
 # Django settings
-os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings"
+os.environ.setdefault(
+    "DJANGO_SETTINGS_MODULE",
+    "config.settings"
+)
 
 import django
 django.setup()

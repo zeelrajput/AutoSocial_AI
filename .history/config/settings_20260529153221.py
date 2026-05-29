@@ -51,11 +51,11 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
+# CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
+# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
 
-# CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
 CELERY_TIMEZONE = "Asia/Kolkata"
 CELERY_ENABLE_UTC = False
@@ -92,7 +92,7 @@ MIDDLEWARE = [
 
 # SITE_BASE_URL = "http://127.0.0.1:8000"
 
-SITE_BASE_URL = "https://agents.zettalgor.com"
+# SITE_BASE_URL = "https://agents.zettalgor.com"
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -159,23 +159,23 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'zetta_social',
-        'USER': 'postgres',
-        'PASSWORD': 'admin',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
-}
-
 # DATABASES = {
 #     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'zetta_social',
+#         'USER': 'postgres',
+#         'PASSWORD': 'admin',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
 #     }
 # }
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 
 # Password validation

@@ -4,29 +4,29 @@ import os
 from pathlib import Path
 
 # -------------------------------------------------
-# FIX PROJECT ROOT FOR PYTHON + EXE
+# FIX FOR EXE + DJANGO
 # -------------------------------------------------
 
 if getattr(sys, 'frozen', False):
-    # EXE mode
-    PROJECT_ROOT = Path(sys._MEIPASS)
+    BASE_DIR = Path(sys._MEIPASS)
 else:
-    # Normal python mode
-    PROJECT_ROOT = Path(__file__).resolve().parents[2]
+    BASE_DIR = Path(__file__).resolve().parents[2]
 
-# Add project root to python path
-sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(BASE_DIR))
 
 # Django settings
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+os.environ.setdefault(
+    "DJANGO_SETTINGS_MODULE",
+    "config.settings"
+)
 
 import django
 django.setup()
 
-# Import AFTER django setup
+# Import AFTER setup
 from core.agent.agent import main
 
-LIVE_BASE_URL = "https://agents.zettalgor.com"
+LIVE_BASE_URL = "https://your-live-domain.com"
 
 # -------------------------------------------------
 

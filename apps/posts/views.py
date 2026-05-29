@@ -316,6 +316,17 @@ def trigger_comment_check(request):
                     "message": "Invalid Facebook URL"
                 }, status=400)
             
+        # ====================================================
+        # X / Twitter VALIDATION
+        # ====================================================
+
+        elif platform in ["x", "twitter"]:
+            if "x.com" not in post_url and "twitter.com" not in post_url:
+
+                return JsonResponse({
+                    "success": False,
+                    "message": "Invalid X URL"
+                }, status=400)
 
         # =====================================================
         # UNSUPPORTED PLATFORM

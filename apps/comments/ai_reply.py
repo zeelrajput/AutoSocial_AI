@@ -91,7 +91,7 @@ Default Reply: {default_reply}
             settings.ZETTALGOR_API_URL,
             headers=headers,
             json=payload,
-            timeout=30
+            timeout=(10, 60)
         )
 
         response.raise_for_status()

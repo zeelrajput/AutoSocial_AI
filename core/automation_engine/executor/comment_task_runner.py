@@ -78,7 +78,9 @@ def run_reply_comment_task(
         return reply_x_comment(
             driver,
             post_url,
-            reply_text
+            reply_text,
+            author,
+            comment_text
         )
 
     return {
