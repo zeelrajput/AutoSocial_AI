@@ -1,0 +1,5 @@
+# Extra Python dependencies for the apps.content_plans module.
+# Install via:  pip install -r requirements_content_plans.txt
+beautifulsoup4>=4.12
+cryptography>=42
+google-genai>=0.3.0

@@ -28,6 +28,7 @@ urlpatterns = [
     path('posts/', include('apps.posts.urls')),
     path('scheduler/', include('apps.scheduler.urls')),
     path("comments/", include("apps.comments.urls")),
+    path('api/', include('apps.content_plans.urls')),
 
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 ]
