@@ -52,7 +52,7 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
-# <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 # ---------------------------------------------------------------------------
 # Content Plans / AI Image Generation
 # ---------------------------------------------------------------------------

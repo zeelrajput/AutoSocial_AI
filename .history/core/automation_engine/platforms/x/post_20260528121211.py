@@ -187,38 +187,6 @@ def get_x_post_url_from_current_page(driver, timeout=45):
 
     return None
 
-X_MAX_CHARS = 280
-
-
-def make_x_safe_caption(caption, max_chars=X_MAX_CHARS):
-    if not caption:
-        return ""
-
-    caption = caption.strip()
-
-    if len(caption) <= max_chars:
-        return caption
-
-    parts = caption.split()
-    hashtags = [p for p in parts if p.startswith("#")]
-    words = [p for p in parts if not p.startswith("#")]
-
-    # Keep only first 3 hashtags for X.
-    kept_hashtags = hashtags[:3]
-
-    suffix = ""
-    if kept_hashtags:
-        suffix = "\n\n" + " ".join(kept_hashtags)
-
-    available = max_chars - len(suffix)
-
-    text = " ".join(words)
-
-    if len(text) > available:
-        text = text[: max(0, available - 3)].rstrip() + "..."
-
-    return (text + suffix).strip()
-
 def post_to_x(driver, post):
     try:
         log("🐦 Opening X/Twitter...")
@@ -241,20 +209,8 @@ def post_to_x(driver, post):
             }
 
         log("✍️ Adding caption...")
-
-        # Important: X does not allow normal posts above 280 characters.
-        # This keeps the post publishable instead of leaving the Post button disabled.
-        caption = make_x_safe_caption(post.caption)
-
-        if len(caption) > X_MAX_CHARS:
-            screenshot = save_screenshot(driver, platform="x", prefix="x_caption_too_long")
-            return {
-                "success": False,
-                "message": f"X caption too long: {len(caption)}/{X_MAX_CHARS} | {screenshot}",
-            }
-
-        if not type_x_caption(driver, textbox, caption):
-            screenshot = save_screenshot(driver, platform="x", prefix="x_typing_failed")
+        if not type_x_caption(driver, textbox, post.caption):
+            screenshot = save_screenshot(driver,platform="x", prefix="x_typing_failed")
             return {
                 "success": False,
                 "message": f"X caption typing failed | {screenshot}",
@@ -279,7 +235,7 @@ def post_to_x(driver, post):
             }
 
         if not click_x_post_button(driver, post_btn):
-            screenshot = save_screenshot(driver, platform="x", prefix="x_post_click_failed")
+            screenshot = save_screenshot(driver,platform="x", prefix="x_post_click_failed")
             return {
                 "success": False,
                 "message": f"X post click failed | {screenshot}",
@@ -303,3 +259,5 @@ def post_to_x(driver, post):
             "success": False,
             "message": f"{str(e)} | {screenshot}",
         }
+    
+    

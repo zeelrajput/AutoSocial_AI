@@ -52,7 +52,7 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
-# <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 # ---------------------------------------------------------------------------
 # Content Plans / AI Image Generation
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
 # =======
 # CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
 # CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
-# >>>>>>> Stashed changes
+>>>>>>> Stashed changes
 
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"

@@ -82,7 +82,7 @@ CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
 # CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
 # >>>>>>> Stashed changes
 
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+# CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
 CELERY_TIMEZONE = "Asia/Kolkata"
@@ -118,9 +118,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-SITE_BASE_URL = "http://127.0.0.1:8000"
+# SITE_BASE_URL = "http://127.0.0.1:8000"
 
-# SITE_BASE_URL = "https://agents.zettalgor.com"
+SITE_BASE_URL = "https://agents.zettalgor.com"
 
 CORS_ALLOW_ALL_ORIGINS = True
 

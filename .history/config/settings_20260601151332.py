@@ -83,7 +83,7 @@ CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
 # >>>>>>> Stashed changes
 
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
 CELERY_TIMEZONE = "Asia/Kolkata"
 CELERY_ENABLE_UTC = False
