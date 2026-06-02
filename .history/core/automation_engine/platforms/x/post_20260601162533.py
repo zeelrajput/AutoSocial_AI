@@ -241,20 +241,8 @@ def post_to_x(driver, post):
             }
 
         log("✍️ Adding caption...")
-
-        # Important: X does not allow normal posts above 280 characters.
-        # This keeps the post publishable instead of leaving the Post button disabled.
-        caption = make_x_safe_caption(post.caption)
-
-        if len(caption) > X_MAX_CHARS:
-            screenshot = save_screenshot(driver, platform="x", prefix="x_caption_too_long")
-            return {
-                "success": False,
-                "message": f"X caption too long: {len(caption)}/{X_MAX_CHARS} | {screenshot}",
-            }
-
-        if not type_x_caption(driver, textbox, caption):
-            screenshot = save_screenshot(driver, platform="x", prefix="x_typing_failed")
+        if not type_x_caption(driver, textbox, post.caption):
+            screenshot = save_screenshot(driver,platform="x", prefix="x_typing_failed")
             return {
                 "success": False,
                 "message": f"X caption typing failed | {screenshot}",
@@ -279,7 +267,7 @@ def post_to_x(driver, post):
             }
 
         if not click_x_post_button(driver, post_btn):
-            screenshot = save_screenshot(driver, platform="x", prefix="x_post_click_failed")
+            screenshot = save_screenshot(driver,platform="x", prefix="x_post_click_failed")
             return {
                 "success": False,
                 "message": f"X post click failed | {screenshot}",
@@ -303,3 +291,5 @@ def post_to_x(driver, post):
             "success": False,
             "message": f"{str(e)} | {screenshot}",
         }
+    
+    

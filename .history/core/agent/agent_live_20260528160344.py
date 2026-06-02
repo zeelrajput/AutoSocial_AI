@@ -26,7 +26,7 @@ django.setup()
 # Import AFTER setup
 from core.agent.agent import main
 
-LIVE_BASE_URL = "https://agents.zettalgor.com"
+LIVE_BASE_URL = "https://your-live-domain.com"
 
 # -------------------------------------------------
 
