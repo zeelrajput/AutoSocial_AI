@@ -220,8 +220,10 @@ async def main(base_url: str):
 
                 async with websockets.connect(
                     server_url,
-                    ping_interval=None,
-                    ping_timeout=None,
+                    ping_interval=20,
+                    ping_timeout=20,
+                    close_timeout=10,
+                    max_size=None,
                     ssl=ssl_context,
                 ) as websocket:
 
@@ -345,8 +347,12 @@ async def main(base_url: str):
                             }))
                             log(f"❌ Automation failed: {e}")
 
-            except (websockets.ConnectionClosed, Exception) as e:
-                log(f"❌ Connection error: {e}")
+            except websockets.ConnectionClosed as e:
+                log(f"❌ Connection closed (code={e.code}, reason={e.reason or 'n/a'})")
+                log("Retrying in 5 seconds...")
+                await asyncio.sleep(5)
+            except Exception as e:
+                log(f"❌ Connection error: {type(e).__name__}: {e}")
                 log("Retrying in 5 seconds...")
                 await asyncio.sleep(5)
 
