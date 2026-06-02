@@ -113,7 +113,11 @@ def generate(item, brand_summary: str = "", prompt_override: str = "") -> str:
     Returns the path relative to MEDIA_ROOT.
     """
     api_key = _api_key_for(item.plan.user)
-    model = getattr(settings, "GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+    model = (
+        item.plan.image_model
+        or getattr(item.plan.user.ai_key, "default_image_model", "")
+        or getattr(settings, "GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+    )
 
     prompt = build_prompt(item.topic, item.platform, brand_summary, prompt_override)
 

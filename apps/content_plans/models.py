@@ -18,6 +18,26 @@ from apps.posts.models import Post
 
 PLATFORM_CHOICES = Post.PLATFORM_CHOICES
 
+MEDIA_TYPE_CHOICES = (
+    ("image", "Image"),
+    ("video", "Video"),
+)
+
+# Allowed Gemini model identifiers. Keep as plain choices so the admin/API
+# can validate, while leaving room for users to type future model names.
+GEMINI_IMAGE_MODEL_CHOICES = (
+    ("gemini-2.5-flash-image", "Gemini 2.5 Flash Image"),
+    ("gemini-2.5-flash-image-preview", "Gemini 2.5 Flash Image (Preview)"),
+    ("imagen-3.0-generate-002", "Imagen 3"),
+    ("imagen-4.0-generate-001", "Imagen 4"),
+)
+
+GEMINI_VIDEO_MODEL_CHOICES = (
+    ("veo-3.0-generate-001", "Veo 3"),
+    ("veo-3.0-fast-generate-001", "Veo 3 Fast"),
+    ("veo-2.0-generate-001", "Veo 2"),
+)
+
 
 class ContentPlan(models.Model):
     """Top-level bulk content plan owned by a user."""
@@ -56,6 +76,14 @@ class ContentPlan(models.Model):
     start_date = models.DateField(null=True, blank=True)
     posting_time = models.TimeField(null=True, blank=True)
 
+    # Media generation defaults for this plan. Items inherit these but can
+    # override media_type individually before caption approval.
+    media_type = models.CharField(
+        max_length=10, choices=MEDIA_TYPE_CHOICES, default="image"
+    )
+    image_model = models.CharField(max_length=64, blank=True, default="")
+    video_model = models.CharField(max_length=64, blank=True, default="")
+
     # Generation outputs
     brand_summary = models.TextField(blank=True, default="")
     brand_keywords = models.JSONField(default=list, blank=True)
@@ -86,6 +114,8 @@ class ContentPlanItem(models.Model):
         ("caption_approved", "Caption approved"),
         ("image_generating", "Image generating"),
         ("image_pending_review", "Image pending review"),
+        ("video_generating", "Video generating"),
+        ("video_pending_review", "Video pending review"),
         ("approved", "Approved"),
         ("rejected", "Rejected"),
         ("scheduled", "Scheduled"),
@@ -105,6 +135,17 @@ class ContentPlanItem(models.Model):
     image = models.FileField(upload_to="content_plans/", blank=True, null=True)
     image_prompt = models.TextField(blank=True, default="")
 
+    # Video output (Veo). Stored as a FileField alongside `image` so legacy
+    # image-only items keep working; serializers expose a unified media URL.
+    video = models.FileField(upload_to="content_plans/", blank=True, null=True)
+    video_prompt = models.TextField(blank=True, default="")
+    video_operation = models.CharField(max_length=255, blank=True, default="")
+
+    # Per-item override. Defaults to the plan's media_type.
+    media_type = models.CharField(
+        max_length=10, choices=MEDIA_TYPE_CHOICES, default="image"
+    )
+
     scheduled_time = models.DateTimeField(null=True, blank=True)
 
     status = models.CharField(
@@ -121,6 +162,7 @@ class ContentPlanItem(models.Model):
 
     caption_regen_count = models.PositiveSmallIntegerField(default=0)
     image_regen_count = models.PositiveSmallIntegerField(default=0)
+    video_regen_count = models.PositiveSmallIntegerField(default=0)
     error_message = models.TextField(blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -145,6 +187,10 @@ class UserAIKey(models.Model):
     gemini_key_encrypted = models.BinaryField(blank=True, null=True)
     gemini_key_last4 = models.CharField(max_length=4, blank=True, default="")
     gemini_validated_at = models.DateTimeField(null=True, blank=True)
+
+    # Per-user default Gemini model preferences (used as plan defaults).
+    default_image_model = models.CharField(max_length=64, blank=True, default="")
+    default_video_model = models.CharField(max_length=64, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

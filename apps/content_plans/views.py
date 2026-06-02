@@ -41,22 +41,38 @@ from rest_framework.response import Response
 
 from apps.posts.models import Post, PostMedia
 from apps.content_plans.crypto import encrypt
-from apps.content_plans.models import ContentPlan, ContentPlanItem, UserAIKey
+from apps.content_plans.models import (
+    ContentPlan,
+    ContentPlanItem,
+    UserAIKey,
+    GEMINI_IMAGE_MODEL_CHOICES,
+    GEMINI_VIDEO_MODEL_CHOICES,
+    MEDIA_TYPE_CHOICES,
+)
 from apps.content_plans.serializers import (
     ContentPlanCreateSerializer,
     ContentPlanDetailSerializer,
     ContentPlanListSerializer,
     ContentPlanItemSerializer,
     ContentPlanScheduleSerializer,
+    GeminiModelsSerializer,
     UserAIKeySerializer,
+    UserAIModelDefaultsSerializer,
 )
 from apps.content_plans.services import images as images_svc
 from apps.content_plans.services import schedule as schedule_svc
 from apps.content_plans.tasks import (
+    dispatch_media_generation,
     generate_content_plan,
     generate_image_for_item,
+    generate_video_for_item,
     regenerate_caption,
 )
+
+
+VALID_IMAGE_MODELS = {code for code, _ in GEMINI_IMAGE_MODEL_CHOICES}
+VALID_VIDEO_MODELS = {code for code, _ in GEMINI_VIDEO_MODEL_CHOICES}
+VALID_MEDIA_TYPES = {code for code, _ in MEDIA_TYPE_CHOICES}
 
 
 # ---------------------------------------------------------------------------
@@ -89,20 +105,37 @@ def _get_item_for_user(user, item_id):
 # Gemini API key management
 # ---------------------------------------------------------------------------
 
-@api_view(["GET", "POST", "DELETE"])
+@api_view(["GET", "POST", "PATCH", "DELETE"])
 @permission_classes([IsAuthenticated])
 def gemini_key(request):
     if request.method == "GET":
         record = UserAIKey.objects.filter(user=request.user).first()
         if not record:
-            return _ok({"configured": False, "last4": "", "validated_at": None})
+            return _ok({
+                "configured": False, "last4": "", "validated_at": None,
+                "default_image_model": "", "default_video_model": "",
+            })
         return _ok(UserAIKeySerializer(record).data)
 
     if request.method == "DELETE":
         UserAIKey.objects.filter(user=request.user).delete()
         return _ok(message="Gemini key removed")
 
-    # POST
+    if request.method == "PATCH":
+        # Update only the default-model preferences (separate from the key itself).
+        ser = UserAIModelDefaultsSerializer(data=request.data, partial=True)
+        if not ser.is_valid():
+            return _err("Invalid input", ser.errors)
+        record, _ = UserAIKey.objects.get_or_create(user=request.user)
+        for field in ("default_image_model", "default_video_model"):
+            if field in ser.validated_data:
+                setattr(record, field, ser.validated_data[field] or "")
+        record.save(update_fields=[
+            "default_image_model", "default_video_model", "updated_at"
+        ])
+        return _ok(UserAIKeySerializer(record).data, message="Defaults updated")
+
+    # POST -- save / replace API key
     api_key = (request.data.get("api_key") or "").strip()
     if not api_key:
         return _err("api_key is required")
@@ -122,6 +155,13 @@ def gemini_key(request):
     data = UserAIKeySerializer(record).data
     data["validated"] = bool(valid)
     return _ok(data, message="Gemini key saved")
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def gemini_models(request):
+    """Static list of supported Gemini image/video model identifiers."""
+    return _ok(GeminiModelsSerializer({}).data)
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +196,11 @@ def plans_collection(request):
         )
 
     data = serializer.validated_data
+
+    # Fall back to user defaults if the plan didn't specify a model.
+    image_model = data.get("image_model") or record.default_image_model or ""
+    video_model = data.get("video_model") or record.default_video_model or ""
+
     plan = ContentPlan.objects.create(
         user=request.user,
         website_url=data["website_url"],
@@ -165,6 +210,9 @@ def plans_collection(request):
         custom_interval_days=data.get("custom_interval_days") or 1,
         start_date=data.get("start_date"),
         posting_time=data.get("posting_time"),
+        media_type=data.get("media_type") or "image",
+        image_model=image_model,
+        video_model=video_model,
         status="generating",
     )
 
@@ -287,11 +335,18 @@ def plan_approve(request, plan_id: int):
     if not eligible.exists():
         return _err("No approved items to schedule.", http=400)
 
-    missing_image = list(eligible.filter(image="").values_list("id", flat=True))
-    if missing_image:
+    missing_media = []
+    for it in eligible:
+        if (it.media_type or "image") == "video":
+            if not it.video:
+                missing_media.append(it.id)
+        else:
+            if not it.image:
+                missing_media.append(it.id)
+    if missing_media:
         return _err(
-            "Some approved items have no image yet.",
-            errors={"items_without_image": missing_image},
+            "Some approved items have no media yet.",
+            errors={"items_without_media": missing_media},
             http=400,
         )
 
@@ -306,6 +361,10 @@ def plan_approve(request, plan_id: int):
             if item.hashtags.strip():
                 caption_text = f"{caption_text}\n\n{item.hashtags.strip()}"
 
+            media_field = (
+                item.video if (item.media_type or "image") == "video" else item.image
+            )
+
             post = Post(
                 user=plan.user,
                 caption=caption_text,
@@ -313,12 +372,12 @@ def plan_approve(request, plan_id: int):
                 scheduled_time=item.scheduled_time,
                 status="scheduled",
             )
-            if item.image:
-                # Reuse the already-saved image file (no re-upload).
-                post.media.name = item.image.name
+            if media_field:
+                # Reuse the already-saved file (no re-upload).
+                post.media.name = media_field.name
             post.save()
-            if item.image:
-                PostMedia.objects.create(post=post, file=item.image.name)
+            if media_field:
+                PostMedia.objects.create(post=post, file=media_field.name)
 
             item.post = post
             item.status = "scheduled"
@@ -356,6 +415,20 @@ def item_update(request, item_id: int):
         item.scheduled_time = request.data["scheduled_time"]
         updated.append("scheduled_time")
 
+    if "media_type" in request.data:
+        new_type = (request.data.get("media_type") or "").strip()
+        if new_type not in VALID_MEDIA_TYPES:
+            return _err(
+                f"media_type must be one of {sorted(VALID_MEDIA_TYPES)}", http=400
+            )
+        # Only allow switching media type before the user has approved final media.
+        if item.status in {"approved", "scheduled", "rejected"}:
+            return _err(
+                f"Cannot change media_type when item is '{item.status}'.", http=409
+            )
+        item.media_type = new_type
+        updated.append("media_type")
+
     if updated:
         updated.append("updated_at")
         item.save(update_fields=updated)
@@ -391,23 +464,25 @@ def item_regenerate_caption(request, item_id: int):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def item_approve_caption(request, item_id: int):
-    """User approves the caption. Triggers Gemini image generation."""
+    """User approves the caption. Triggers Gemini image or Veo video generation."""
     item = _get_item_for_user(request.user, item_id)
     if not (item.caption or "").strip():
         return _err("Cannot approve an empty caption", http=400)
 
-    item.status = "image_generating"
+    is_video = (item.media_type or "image") == "video"
+    item.status = "video_generating" if is_video else "image_generating"
     item.save(update_fields=["status", "updated_at"])
 
-    try:
-        generate_image_for_item.delay(item.id, "")
-    except Exception:
-        generate_image_for_item(item.id, "")
+    dispatch_media_generation(item, "")
 
     item.refresh_from_db()
     return _ok(
         ContentPlanItemSerializer(item, context={"request": request}).data,
-        message="Caption approved, image generation started",
+        message=(
+            "Caption approved, video generation started"
+            if is_video
+            else "Caption approved, image generation started"
+        ),
     )
 
 
@@ -436,30 +511,65 @@ def item_regenerate_image(request, item_id: int):
 
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def item_regenerate_video(request, item_id: int):
+    item = _get_item_for_user(request.user, item_id)
+    max_regens = getattr(settings, "CONTENT_PLAN_MAX_REGENS", 3)
+    if item.video_regen_count >= max_regens:
+        return _err(
+            f"Video regeneration limit reached ({max_regens}).", http=429
+        )
+
+    prompt_override = (request.data.get("prompt_override") or "").strip()
+
+    try:
+        generate_video_for_item.delay(item.id, prompt_override)
+    except Exception:
+        generate_video_for_item(item.id, prompt_override)
+
+    item.refresh_from_db()
+    return _ok(
+        ContentPlanItemSerializer(item, context={"request": request}).data,
+        message="Video regeneration queued",
+    )
+
+
+@api_view(["POST"])
 @parser_classes([MultiPartParser, FormParser])
 @permission_classes([IsAuthenticated])
 def item_upload_image(request, item_id: int):
+    """Upload either an image or video file, depending on the item's media_type."""
     item = _get_item_for_user(request.user, item_id)
-    upload = request.FILES.get("image")
+    upload = request.FILES.get("image") or request.FILES.get("video") or request.FILES.get("file")
     if not upload:
-        return _err("image file is required", http=400)
+        return _err("image or video file is required", http=400)
 
-    item.image = upload
-    item.status = "image_pending_review"
-    item.save(update_fields=["image", "status", "updated_at"])
+    if (item.media_type or "image") == "video":
+        item.video = upload
+        item.status = "video_pending_review"
+        item.save(update_fields=["video", "status", "updated_at"])
+    else:
+        item.image = upload
+        item.status = "image_pending_review"
+        item.save(update_fields=["image", "status", "updated_at"])
 
     return _ok(
         ContentPlanItemSerializer(item, context={"request": request}).data,
-        message="Image uploaded",
+        message="Media uploaded",
     )
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def item_approve_image(request, item_id: int):
+    """Approve the generated/uploaded media (image or video) for an item."""
     item = _get_item_for_user(request.user, item_id)
-    if not item.image:
-        return _err("Item has no image to approve", http=400)
+    is_video = (item.media_type or "image") == "video"
+    media_file = item.video if is_video else item.image
+    if not media_file:
+        return _err(
+            f"Item has no {'video' if is_video else 'image'} to approve", http=400
+        )
     item.status = "approved"
     item.save(update_fields=["status", "updated_at"])
     return _ok(

@@ -16,6 +16,7 @@ from apps.content_plans.services import captions as captions_svc
 from apps.content_plans.services import images as images_svc
 from apps.content_plans.services import schedule as schedule_svc
 from apps.content_plans.services import scraper as scraper_svc
+from apps.content_plans.services import videos as videos_svc
 from apps.content_plans.services.zettalgor import ZettalgorError
 
 
@@ -72,6 +73,7 @@ def generate_content_plan(self, plan_id: int):
                 topic=topic,
                 scheduled_time=scheduled_at,
                 status="pending_review",
+                media_type=plan.media_type or "image",
             )
             items.append(item)
 
@@ -157,3 +159,48 @@ def generate_image_for_item(item_id: int, prompt_override: str = ""):
         item.status = "failed"
         item.error_message = f"Image generation error: {exc}"
         item.save(update_fields=["status", "error_message", "updated_at"])
+
+
+@shared_task(name="apps.content_plans.tasks.generate_video_for_item")
+def generate_video_for_item(item_id: int, prompt_override: str = ""):
+    """Generate (or regenerate) a Veo video for a single item."""
+    try:
+        item = ContentPlanItem.objects.select_related("plan", "plan__user").get(id=item_id)
+    except ContentPlanItem.DoesNotExist:
+        return
+
+    item.status = "video_generating"
+    item.error_message = ""
+    item.save(update_fields=["status", "error_message", "updated_at"])
+
+    try:
+        saved_path = videos_svc.generate(
+            item,
+            brand_summary=item.plan.brand_summary,
+            prompt_override=prompt_override,
+        )
+        item.video.name = saved_path
+        item.status = "video_pending_review"
+        if prompt_override:
+            item.video_regen_count = (item.video_regen_count or 0) + 1
+        item.save(update_fields=[
+            "video", "video_prompt", "video_regen_count", "status", "updated_at"
+        ])
+    except Exception as exc:
+        item.status = "failed"
+        item.error_message = f"Video generation error: {exc}"
+        item.save(update_fields=["status", "error_message", "updated_at"])
+
+
+def dispatch_media_generation(item, prompt_override: str = ""):
+    """Route to the right generator task based on the item's media_type."""
+    if (item.media_type or "image") == "video":
+        try:
+            generate_video_for_item.delay(item.id, prompt_override)
+        except Exception:
+            generate_video_for_item(item.id, prompt_override)
+    else:
+        try:
+            generate_image_for_item.delay(item.id, prompt_override)
+        except Exception:
+            generate_image_for_item(item.id, prompt_override)

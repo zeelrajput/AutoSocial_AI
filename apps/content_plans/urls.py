@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     # AI key management
     path("ai-keys/gemini/", views.gemini_key, name="content_plans_gemini_key"),
+    path("ai-keys/gemini/models/", views.gemini_models, name="content_plans_gemini_models"),
 
     # Plans collection / detail
     path("content-plans/", views.plans_collection, name="content_plans_list"),
@@ -17,7 +18,10 @@ urlpatterns = [
     path("content-plans/items/<int:item_id>/regenerate-caption/", views.item_regenerate_caption, name="content_plan_item_regen_caption"),
     path("content-plans/items/<int:item_id>/approve-caption/", views.item_approve_caption, name="content_plan_item_approve_caption"),
     path("content-plans/items/<int:item_id>/regenerate-image/", views.item_regenerate_image, name="content_plan_item_regen_image"),
+    path("content-plans/items/<int:item_id>/regenerate-video/", views.item_regenerate_video, name="content_plan_item_regen_video"),
     path("content-plans/items/<int:item_id>/upload-image/", views.item_upload_image, name="content_plan_item_upload_image"),
+    path("content-plans/items/<int:item_id>/upload-media/", views.item_upload_image, name="content_plan_item_upload_media"),
     path("content-plans/items/<int:item_id>/approve-image/", views.item_approve_image, name="content_plan_item_approve_image"),
+    path("content-plans/items/<int:item_id>/approve-media/", views.item_approve_image, name="content_plan_item_approve_media"),
     path("content-plans/items/<int:item_id>/reject/", views.item_reject, name="content_plan_item_reject"),
 ]
