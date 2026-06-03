@@ -65,8 +65,13 @@ AI_KEY_FERNET_KEY = os.environ.get("AI_KEY_FERNET_KEY", "")
 
 # Gemini configuration
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+GEMINI_VIDEO_MODEL = os.environ.get("GEMINI_VIDEO_MODEL", "veo-3.0-fast-generate-001")
 GEMINI_TEXT_MODEL = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
 GEMINI_REQUEST_TIMEOUT = 60
+# How often (seconds) to poll a Veo long-running operation, and the overall
+# timeout before we give up.
+GEMINI_VIDEO_POLL_INTERVAL = int(os.environ.get("GEMINI_VIDEO_POLL_INTERVAL", "10"))
+GEMINI_VIDEO_TIMEOUT = int(os.environ.get("GEMINI_VIDEO_TIMEOUT", "600"))
 
 # Content plan limits / quotas
 CONTENT_PLAN_MAX_REGENS = 3
@@ -83,7 +88,7 @@ CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
 # >>>>>>> Stashed changes
 
 # CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
 CELERY_TIMEZONE = "Asia/Kolkata"
 CELERY_ENABLE_UTC = False
@@ -196,14 +201,14 @@ WSGI_APPLICATION = 'config.wsgi.application'
 #         'HOST': 'localhost',
 #         'PORT': '5432',
 #     }
-}
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
 # }
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 
 # Password validation

@@ -47,15 +47,48 @@ INSTALLED_APPS = [
     'apps.posts',
     'apps.comments',
     'apps.scheduler',
+    'apps.content_plans',
     'django_celery_beat',
     'corsheaders',
 ]
 
+# <<<<<<< Updated upstream
+# ---------------------------------------------------------------------------
+# Content Plans / AI Image Generation
+# ---------------------------------------------------------------------------
+import os
+
+# 32-byte url-safe base64 Fernet key used to encrypt user-supplied AI API keys.
+# In production set AI_KEY_FERNET_KEY in the environment. For local dev we fall
+# back to a key derived from SECRET_KEY (NOT safe for production rotation).
+AI_KEY_FERNET_KEY = os.environ.get("AI_KEY_FERNET_KEY", "")
+
+# Gemini configuration
+GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+GEMINI_VIDEO_MODEL = os.environ.get("GEMINI_VIDEO_MODEL", "veo-3.0-fast-generate-001")
+GEMINI_TEXT_MODEL = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
+GEMINI_REQUEST_TIMEOUT = 60
+# How often (seconds) to poll a Veo long-running operation, and the overall
+# timeout before we give up.
+GEMINI_VIDEO_POLL_INTERVAL = int(os.environ.get("GEMINI_VIDEO_POLL_INTERVAL", "10"))
+GEMINI_VIDEO_TIMEOUT = int(os.environ.get("GEMINI_VIDEO_TIMEOUT", "600"))
+
+# Content plan limits / quotas
+CONTENT_PLAN_MAX_REGENS = 3
+CONTENT_PLAN_MAX_DURATION_DAYS = 30
+CONTENT_PLAN_MIN_DURATION_DAYS = 1
+CONTENT_PLAN_SCRAPE_TIMEOUT = 10
+CONTENT_PLAN_IMAGE_CONCURRENCY = 3
+
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
+# =======
 # CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
 # CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
+# >>>>>>> Stashed changes
 
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+# CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 
 CELERY_TIMEZONE = "Asia/Kolkata"
 CELERY_ENABLE_UTC = False
@@ -159,16 +192,16 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'zetta_social',
-#         'USER': 'postgres',
-#         'PASSWORD': 'admin',
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
-# }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'zetta_social',
+        'USER': 'postgres',
+        'PASSWORD': 'admin',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
+}
 
 DATABASES = {
     'default': {

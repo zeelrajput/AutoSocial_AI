@@ -65,8 +65,13 @@ AI_KEY_FERNET_KEY = os.environ.get("AI_KEY_FERNET_KEY", "")
 
 # Gemini configuration
 GEMINI_IMAGE_MODEL = os.environ.get("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
+GEMINI_VIDEO_MODEL = os.environ.get("GEMINI_VIDEO_MODEL", "veo-3.0-fast-generate-001")
 GEMINI_TEXT_MODEL = os.environ.get("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
 GEMINI_REQUEST_TIMEOUT = 60
+# How often (seconds) to poll a Veo long-running operation, and the overall
+# timeout before we give up.
+GEMINI_VIDEO_POLL_INTERVAL = int(os.environ.get("GEMINI_VIDEO_POLL_INTERVAL", "10"))
+GEMINI_VIDEO_TIMEOUT = int(os.environ.get("GEMINI_VIDEO_TIMEOUT", "600"))
 
 # Content plan limits / quotas
 CONTENT_PLAN_MAX_REGENS = 3
@@ -76,7 +81,7 @@ CONTENT_PLAN_SCRAPE_TIMEOUT = 10
 CONTENT_PLAN_IMAGE_CONCURRENCY = 3
 
 CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
-CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
+# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"
 # =======
 # CELERY_BROKER_URL = "redis://127.0.0.1:6379/8"
 # CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/9"

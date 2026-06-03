@@ -14,6 +14,7 @@ from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from core.automation_engine.common.logger import clean_log as log, get_platform_logger
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ class InstagramCommentAutomation:
         self.driver.get(post_url)
         time.sleep(5)
         print("CURRENT URL:", self.driver.current_url)
-        print("PAGE TITLE:", self.driver.title)
+        # print("PAGE TITLE:", self.driver.title)
         print("BODY TEXT:", self.driver.find_element(By.TAG_NAME, "body").text[:700])
         self._wait_for_post_page()
         self._raise_if_instagram_blocked()
@@ -329,16 +330,18 @@ def check_instagram_comments(
     keyword_replies=None,
     default_reply="Thank you!"
 ):
+    error_log = get_platform_logger("instagram")
+
     try:
         import re
 
-        print("Opening post:", post_url)
+        log(f"Opening Instagram post: {post_url}")
 
         driver.get(post_url)
         time.sleep(8)
 
-        print("CURRENT URL:", driver.current_url)
-        print("PAGE TITLE:", driver.title)
+        log(f"CURRENT URL: {driver.current_url}")
+        log(f"PAGE TITLE: {driver.title}")
 
         body_text = driver.find_element(By.TAG_NAME, "body").text
         lines = [line.strip() for line in body_text.splitlines() if line.strip()]
@@ -348,31 +351,13 @@ def check_instagram_comments(
         )
 
         ignored_authors = {
-            "1",
-            "2",
-            "Meta",
-            "About",
-            "Blog",
-            "Jobs",
-            "Help",
-            "API",
-            "Privacy",
-            "Terms",
-            "Locations",
-            "English",
+            "1", "2", "Meta", "About", "Blog", "Jobs", "Help",
+            "API", "Privacy", "Terms", "Locations", "English",
         }
 
         ignored_text = {
-            "Reply",
-            "View insights",
-            "Meta",
-            "About",
-            "Blog",
-            "Jobs",
-            "Help",
-            "API",
-            "Privacy",
-            "Terms",
+            "Reply", "View insights", "Meta", "About", "Blog", "Jobs",
+            "Help", "API", "Privacy", "Terms",
         }
 
         own_username = get_instagram_logged_in_username(driver)
@@ -399,8 +384,7 @@ def check_instagram_comments(
             if author in ignored_authors:
                 continue
 
-            if own_username and author == own_username: 
-                # print("⏭️ Skipping post owner / own comment:", author)       
+            if own_username and author == own_username:
                 continue
 
             if comment_text in ignored_text:
@@ -419,16 +403,18 @@ def check_instagram_comments(
                 "text": comment_text,
             })
 
-            print("✅ Comment detected")
-            print("AUTHOR:", author)
-            print("TEXT:", comment_text)
+            log("Comment detected")
+            log(f"AUTHOR: {author}")
+            log(f"TEXT: {comment_text}")
 
-        print("TOTAL COMMENTS:", len(comments))
+        log(f"TOTAL COMMENTS: {len(comments)}")
 
+        error_log.info("No error generated during Instagram comment detection")
         return comments
 
     except Exception as exc:
-        print("Instagram comment check failed:", exc)
+        error_log.exception("Instagram comment detection failed")
+        log(f"Instagram comment detection failed: {_clean_error_message(exc)}")
         return []
 
 def reply_instagram_comment(
@@ -438,23 +424,21 @@ def reply_instagram_comment(
     author=None,
     comment_text=None
 ):
+    error_log = get_platform_logger("instagram")
+
     try:
-        print("Opening post for reply:", post_url)
-        print("Reply target author:", author)
-        print("Reply target text:", comment_text)
-        print("Reply text:", reply_text)
+        log(f"Opening Instagram post for reply: {post_url}")
+        log(f"Reply target author: {author}")
+        log(f"Reply target text: {comment_text}")
 
         if not author or not comment_text:
-            return {
-                "success": False,
-                "message": "Reply target author/comment_text missing"
-            }
+            raise RuntimeError("Reply target author/comment_text missing")
 
         driver.get(post_url)
         time.sleep(8)
 
-        print("CURRENT URL:", driver.current_url)
-        print("PAGE TITLE:", driver.title)
+        log(f"CURRENT URL: {driver.current_url}")
+        log(f"PAGE TITLE: {driver.title}")
 
         clicked = driver.execute_script(
             """
@@ -474,10 +458,7 @@ def reply_instagram_comment(
                 const el = document.elementFromPoint(x, y);
 
                 if (!el) {
-                    return {
-                        clicked: false,
-                        reason: "elementFromPoint returned null"
-                    };
+                    return { clicked: false, reason: "elementFromPoint returned null" };
                 }
 
                 ["pointerover", "mouseover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach(type => {
@@ -528,10 +509,7 @@ def reply_instagram_comment(
             }
 
             if (!bestBlock) {
-                return {
-                    clicked: false,
-                    reason: "matching comment block not found"
-                };
+                return { clicked: false, reason: "matching comment block not found" };
             }
 
             bestBlock.scrollIntoView({block: "center"});
@@ -574,28 +552,18 @@ def reply_instagram_comment(
             const x = rect.left + rect.width / 2;
             const y = rect.top + rect.height / 2;
 
-            const result = fireClickAt(x, y);
-
-            return {
-                ...result,
-                blockText: norm(bestBlock.innerText),
-                clickX: x,
-                clickY: y
-            };
+            return fireClickAt(x, y);
             """,
             author,
             comment_text,
         )
 
-        print("CLICK RESULT:", clicked)
-
         if not clicked or not clicked.get("clicked"):
-            return {
-                "success": False,
-                "message": clicked.get("reason", "Target comment Reply button not found")
+            raise RuntimeError(
+                clicked.get("reason", "Target comment Reply button not found")
                 if isinstance(clicked, dict)
                 else "Target comment Reply button not found"
-            }
+            )
 
         time.sleep(2)
 
@@ -615,22 +583,7 @@ def reply_instagram_comment(
                 continue
 
         if not reply_box:
-            return {
-                "success": False,
-                "message": "Reply textbox not found after clicking Reply"
-            }
-
-        placeholder = reply_box.get_attribute("placeholder") or ""
-        aria_label = reply_box.get_attribute("aria-label") or ""
-        current_value = (
-            reply_box.get_attribute("value")
-            or reply_box.text
-            or ""
-        )
-
-        print("SELECTED BOX PLACEHOLDER:", placeholder)
-        print("SELECTED BOX ARIA:", aria_label)
-        print("SELECTED BOX VALUE:", current_value)
+            raise RuntimeError("Reply textbox not found after clicking Reply")
 
         reply_box.click()
         time.sleep(1)
@@ -641,15 +594,10 @@ def reply_instagram_comment(
             or ""
         )
 
-        print("SELECTED BOX VALUE AFTER CLICK:", current_value)
-
         author_mention = f"@{author}"
 
         if author_mention not in current_value:
-            return {
-                "success": False,
-                "message": f"Instagram did not activate reply mode for {author}"
-            }
+            raise RuntimeError(f"Instagram did not activate reply mode for {author}")
 
         final_reply_text = current_value.strip() + " " + reply_text
 
@@ -685,7 +633,7 @@ def reply_instagram_comment(
 
         time.sleep(1)
 
-        print("REPLY TYPED:", True)
+        # log("REPLY TYPED: True")
 
         posted = driver.execute_script(
             """
@@ -707,29 +655,31 @@ def reply_instagram_comment(
             """
         )
 
-        print("POST CLICKED:", posted)
+        # log(f"POST CLICKED: {posted}")
 
         if not posted:
-            return {
-                "success": False,
-                "message": "Post button not found or not enabled after typing reply"
-            }
+            raise RuntimeError("Post button not found or not enabled after typing reply")
 
         time.sleep(3)
 
-        print("✅ Reply Sent:", reply_text)
+        log(f"Reply sent: {reply_text}")
+
+        error_log.info("No error generated during Instagram comment reply")
 
         return {
             "success": True,
             "message": "Reply sent successfully"
         }
 
-    except Exception as e:
-        print("❌ Reply Failed:", e)
+    except Exception as exc:
+        error_log.exception("Instagram comment reply failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"Instagram comment reply failed: {clean_message}")
 
         return {
             "success": False,
-            "message": str(e)
+            "message": clean_message
         }
 
 def _clean_error_message(exc: Exception) -> str:

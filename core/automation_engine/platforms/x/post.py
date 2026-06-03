@@ -2,8 +2,7 @@ import time
 
 from core.automation_engine.common.screenshot_helper import save_screenshot
 from core.automation_engine.common.human_behavior import medium_pause
-from core.automation_engine.common.logger import clean_log as log
-
+from core.automation_engine.common.logger import clean_log as log, get_platform_logger
 from .utils import (
     open_x_home,
     click_compose_if_needed,
@@ -220,11 +219,13 @@ def make_x_safe_caption(caption, max_chars=X_MAX_CHARS):
     return (text + suffix).strip()
 
 def post_to_x(driver, post):
+    error_log = get_platform_logger("x")
+
     try:
-        log("🐦 Opening X/Twitter...")
+        log("Opening X/Twitter...")
         open_x_home(driver)
 
-        log("➕ Opening compose box...")
+        log("Opening compose box...")
         click_compose_if_needed(driver)
 
         textbox = find_x_textbox(driver, timeout=20)
@@ -235,61 +236,44 @@ def post_to_x(driver, post):
 
         if not textbox:
             screenshot = save_screenshot(driver, platform="x", prefix="x_textbox_not_found")
-            return {
-                "success": False,
-                "message": f"X textbox not found | {screenshot}",
-            }
+            raise RuntimeError(f"X textbox not found | {screenshot}")
 
-        log("✍️ Adding caption...")
+        log("Adding caption...")
 
-        # Important: X does not allow normal posts above 280 characters.
-        # This keeps the post publishable instead of leaving the Post button disabled.
         caption = make_x_safe_caption(post.caption)
 
         if len(caption) > X_MAX_CHARS:
             screenshot = save_screenshot(driver, platform="x", prefix="x_caption_too_long")
-            return {
-                "success": False,
-                "message": f"X caption too long: {len(caption)}/{X_MAX_CHARS} | {screenshot}",
-            }
+            raise RuntimeError(f"X caption too long: {len(caption)}/{X_MAX_CHARS} | {screenshot}")
 
         if not type_x_caption(driver, textbox, caption):
             screenshot = save_screenshot(driver, platform="x", prefix="x_typing_failed")
-            return {
-                "success": False,
-                "message": f"X caption typing failed | {screenshot}",
-            }
+            raise RuntimeError(f"X caption typing failed | {screenshot}")
 
-        log("🖼 Uploading image...")
+        log("Uploading image...")
+
         if not upload_x_image(driver, post):
             screenshot = save_screenshot(driver, platform="x", prefix="x_image_failed")
-            return {
-                "success": False,
-                "message": f"X image upload failed | {screenshot}",
-            }
+            raise RuntimeError(f"X image upload failed | {screenshot}")
 
-        log("📤 Sharing post...")
+        log("Sharing post...")
         post_btn = find_x_post_button(driver, timeout=20)
 
         if not post_btn:
             screenshot = save_screenshot(driver, platform="x", prefix="x_post_btn_not_found")
-            return {
-                "success": False,
-                "message": f"X post button not found | {screenshot}",
-            }
+            raise RuntimeError(f"X post button not found | {screenshot}")
 
         if not click_x_post_button(driver, post_btn):
             screenshot = save_screenshot(driver, platform="x", prefix="x_post_click_failed")
-            return {
-                "success": False,
-                "message": f"X post click failed | {screenshot}",
-            }
+            raise RuntimeError(f"X post click failed | {screenshot}")
 
         medium_pause()
 
-        log("🔗 Getting X post URL...")
+        log("Getting X post URL...")
         post_url = get_x_post_url_from_current_page(driver, timeout=45)
-        log(f"🔗 X post URL: {post_url}")
+        log(f"X post URL: {post_url}")
+
+        error_log.info("No error generated during X post")
 
         return {
             "success": True,
@@ -297,9 +281,21 @@ def post_to_x(driver, post):
             "post_url": post_url,
         }
 
-    except Exception as e:
-        screenshot = save_screenshot(driver, platform="x", prefix="x_error")
+    except Exception as exc:
+        error_log.exception("X post failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"X post failed: {clean_message}")
+
         return {
             "success": False,
-            "message": f"{str(e)} | {screenshot}",
+            "message": clean_message,
         }
+    
+def _clean_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+
+    if message:
+        return message.split("Stacktrace:")[0].strip()
+
+    return exc.__class__.__name__

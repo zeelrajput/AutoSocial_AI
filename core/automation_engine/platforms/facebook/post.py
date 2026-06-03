@@ -8,7 +8,7 @@ from core.automation_engine.common.human_behavior import small_pause, medium_pau
 from core.automation_engine.common.screenshot_helper import save_screenshot
 from core.automation_engine.common.click_helper import safe_click
 from core.automation_engine.common.type_helper import type_like_human
-from core.automation_engine.common.logger import clean_log as log
+from core.automation_engine.common.logger import clean_log as log, get_platform_logger
 
 from .utils import (
     wait_for_facebook_login,
@@ -52,6 +52,9 @@ def find_facebook_post_url(driver, timeout=20):
 
 
 def post_to_facebook(driver, post):
+
+    error_log = get_platform_logger("facebook")
+
     try:
         caption = str(post.caption or "").strip()
         media_files = []
@@ -78,9 +81,11 @@ def post_to_facebook(driver, post):
 
         if not wait_for_facebook_login(driver, timeout=20):
             screenshot = save_screenshot(driver, platform="facebook", prefix="fb_login_failed")
+            error_log.error(f"Facebook login not completed | screenshot: {screenshot}")
+
             return {
                 "success": False,
-                "message": f"Facebook login not completed | {screenshot}",
+                "message": "Facebook post failed.",
             }
 
         handle_facebook_security(driver)
@@ -90,9 +95,11 @@ def post_to_facebook(driver, post):
         create_btn = find_create_post_button(driver, timeout=15)
 
         if not create_btn:
+            error_log.error("Create post button not found")
+
             return {
                 "success": False,
-                "message": "Create post button not found",
+                "message": "Facebook post failed",
             }
 
         clicked = False
@@ -117,9 +124,10 @@ def post_to_facebook(driver, post):
                 pass
 
         if not clicked:
+            error_log.error("Facebook create post button click failed")
             return {
                 "success": False,
-                "message": "Create post button click failed",
+                "message": "Facebook post failed",
             }
 
         medium_pause()
@@ -129,9 +137,10 @@ def post_to_facebook(driver, post):
             photo_btn = find_photo_video_button(driver, timeout=10)
 
             if not photo_btn:
+                error_log.error("Facebook Photo/Video button not found")
                 return {
                     "success": False,
-                    "message": "Facebook Photo/Video button not found",
+                    "message": "Facebook post failed. Details saved in log file.",
                 }
 
             clicked = False
@@ -156,9 +165,10 @@ def post_to_facebook(driver, post):
                     pass
 
             if not clicked:
+                error_log.error("Facebook Photo/Video button click failed")
                 return {
                     "success": False,
-                    "message": "Facebook Photo/Video click failed",
+                    "message": "Facebook post failed",
                 }
 
             medium_pause()
@@ -167,9 +177,10 @@ def post_to_facebook(driver, post):
 
             if not file_input:
                 screenshot = save_screenshot(driver, platform="facebook", prefix="fb_image_input_not_found")
+                error_log.error(f"Facebook image input not found | screenshot: {screenshot}")
                 return {
                     "success": False,
-                    "message": f"Image input not found | {screenshot}",
+                    "message": "Facebook post failed..",
                 }
 
             try:
@@ -178,13 +189,22 @@ def post_to_facebook(driver, post):
                 pass
 
             log("🖼 Uploading image...")
-            file_input.send_keys("\n".join(media_files))
-
-            if not wait_for_uploaded_image_ready(driver, timeout=25):
+            try:
+                file_input.send_keys("\n".join(media_files))
+            except Exception:
+                error_log.exception("Facebook image upload failed")
                 return {
                     "success": False,
-                    "message": "Facebook image preview/upload not ready",
+                    "message": "Facebook post failed.",
                 }
+
+            if not wait_for_uploaded_image_ready(driver, timeout=25):
+                error_log.error("Facebook image preview/upload not ready")
+                return {
+                    "success": False,
+                    "message": "Facebook post failed.",
+                }
+
 
             time.sleep(2)
 
@@ -194,9 +214,10 @@ def post_to_facebook(driver, post):
         textbox = find_textbox(driver, timeout=15)
 
         if not textbox:
+            error_log.error("Facebook textbox not found")
             return {
                 "success": False,
-                "message": "Facebook textbox not found",
+                "message": "Facebook post failed.",
             }
 
         try:
@@ -267,9 +288,10 @@ def post_to_facebook(driver, post):
 
         if not typed:
             screenshot = save_screenshot(driver,platform="facebook", prefix="fb_caption_failed")
+            error_log.error(f"Facebook caption typing failed | screenshot: {screenshot}")
             return {
                 "success": False,
-                "message": f"Caption typing failed | {screenshot}",
+                "message": "Facebook post failed.",
             }
 
         if media_files:
@@ -285,24 +307,27 @@ def post_to_facebook(driver, post):
 
                 if len(visible_previews) == 0:
                     screenshot = save_screenshot(driver,platform="facebook", prefix="fb_preview_missing")
+                    error_log.error(f"Facebook image preview missing | screenshot: {screenshot}")
                     return {
                         "success": False,
-                        "message": f"Image preview missing | {screenshot}",
+                        "message": "Facebook post failed..",
                     }
 
-            except Exception as e:
+            except Exception:
+                error_log.exception("Facebook preview check failed")
                 return {
                     "success": False,
-                    "message": f"Facebook preview check failed: {str(e)}",
+                    "message": "Facebook post failed.",
                 }
 
         log("📤 Sharing post...")
         post_btn = find_post_button(driver, timeout=15)
 
         if not post_btn:
+            error_log.error("Facebook post button not found")
             return {
                 "success": False,
-                "message": "Facebook post button not found",
+                "message": "Facebook post failed",
             }
 
         clicked = False
@@ -328,9 +353,10 @@ def post_to_facebook(driver, post):
 
         if not clicked:
             screenshot = save_screenshot(driver,platform="facebook", prefix="fb_post_click_failed")
+            error_log.error(f"Facebook post button click failed | screenshot: {screenshot}")
             return {
                 "success": False,
-                "message": f"Post click failed | {screenshot}",
+                "message": "Facebook post failed..",
             }
 
         medium_pause()
@@ -347,14 +373,19 @@ def post_to_facebook(driver, post):
         except Exception:
             pass
 
+        error_log.info("No error generated")
+
         return {
             "success": True,
             "message": "Facebook post successful",
             "post_url": post_url,
         }
+    
 
-    except Exception as e:
+    except Exception:
+        
+        error_log.exception("Facebook post automation failed")
         return {
             "success": False,
-            "message": str(e),
+            "message": "Facebook post failed..",
         }

@@ -7,13 +7,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from apps.comments.ai_reply import generate_ai_reply
+from core.automation_engine.common.logger import clean_log as log, get_platform_logger
 
-SILENT = False
+# SILENT = False
 
 
-def log(msg):
-    if not SILENT:
-        print(msg, flush=True)
+# def log(msg):
+#     if not SILENT:
+#         print(msg, flush=True)
 
 
 def normalize(text):
@@ -160,8 +161,10 @@ def prepare_x_replies(driver):
 
 
 def check_x_comments(driver, post_url):
+    error_log = get_platform_logger("x")
+
     try:
-        log("📩 Checking X replies...")
+        log("Checking X replies...")
 
         main_status_id = extract_status_id(post_url)
 
@@ -178,37 +181,38 @@ def check_x_comments(driver, post_url):
         articles = get_x_reply_articles(driver)
         comments = []
 
-        log(f"💬 Found {len(articles)} X tweet articles")
+        log(f"Found {len(articles)} X tweet articles")
 
         for article in articles:
-            try:
-                article_status_id = get_article_status_id(article)
+            article_status_id = get_article_status_id(article)
 
-                if article_status_id and article_status_id == main_status_id:
-                    continue
+            if article_status_id and article_status_id == main_status_id:
+                continue
 
-                text = extract_x_reply_text(article)
+            text = extract_x_reply_text(article)
 
-                if not text:
-                    continue
+            if not text:
+                continue
 
-                author = extract_x_author(article)
+            author = extract_x_author(article)
 
-                comments.append({
-                    "author": author,
-                    "text": text,
-                })
+            comments.append({
+                "author": author,
+                "text": text,
+            })
 
-                log(f"💬 X reply found: {author} - {text}")
+            log(f"X reply found: {author} - {text}")
 
-            except Exception as e:
-                print("X COMMENT PARSE ERROR:", e)
+        log(f"Total X replies extracted: {len(comments)}")
 
-        log(f"✅ Total X replies extracted: {len(comments)}")
+        error_log.info("No error generated during X comment detection")
         return comments
 
-    except Exception as e:
-        print("❌ X CHECK COMMENT ERROR:", e)
+    except Exception as exc:
+        error_log.exception("X comment detection failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"X comment detection failed: {clean_message}")
         return []
 
 
@@ -299,8 +303,10 @@ def submit_x_reply(driver):
 
 
 def reply_x_comment(driver, post_url, reply_text=None, author=None, comment_text=None):
+    error_log = get_platform_logger("x")
+
     try:
-        log("📩 X reply task received")
+        log("X reply task received")
 
         driver.get(post_url)
 
@@ -315,10 +321,7 @@ def reply_x_comment(driver, post_url, reply_text=None, author=None, comment_text
         comment_element = find_target_x_reply(driver, comment_text, post_url)
 
         if not comment_element:
-            return {
-                "success": False,
-                "message": "Target X reply not found",
-            }
+            raise RuntimeError("Target X reply not found")
 
         if not reply_text:
             ai_data = generate_ai_reply(
@@ -331,29 +334,22 @@ def reply_x_comment(driver, post_url, reply_text=None, author=None, comment_text
 
             reply_text = ai_data.get("reply") or "Thank you!"
 
-        log(f"🤖 Reply text: {reply_text}")
+        log(f"Reply text: {reply_text}")
 
         if not click_x_reply_button(comment_element):
-            return {
-                "success": False,
-                "message": "X reply button not found",
-            }
+            raise RuntimeError("X reply button not found")
 
         textbox = type_x_reply(driver, reply_text)
 
         if not textbox:
-            return {
-                "success": False,
-                "message": "X reply textbox not found",
-            }
+            raise RuntimeError("X reply textbox not found")
 
         if not submit_x_reply(driver):
-            return {
-                "success": False,
-                "message": "X reply submit failed",
-            }
+            raise RuntimeError("X reply submit failed")
 
-        log("✅ X reply sent")
+        log("X reply sent")
+
+        error_log.info("No error generated during X comment reply")
 
         return {
             "success": True,
@@ -361,8 +357,21 @@ def reply_x_comment(driver, post_url, reply_text=None, author=None, comment_text
             "reply": reply_text,
         }
 
-    except Exception as e:
+    except Exception as exc:
+        error_log.exception("X comment reply failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"X comment reply failed: {clean_message}")
+
         return {
             "success": False,
-            "message": str(e),
+            "message": clean_message,
         }
+    
+def _clean_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+
+    if message:
+        return message.split("Stacktrace:")[0].strip()
+
+    return exc.__class__.__name__

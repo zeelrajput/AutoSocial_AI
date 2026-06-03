@@ -7,7 +7,7 @@ from core.automation_engine.common.human_behavior import small_pause, medium_pau
 from core.automation_engine.common.screenshot_helper import save_screenshot
 from core.automation_engine.common.click_helper import safe_click
 from core.automation_engine.common.type_helper import type_like_human
-from core.automation_engine.common.logger import clean_log as log
+from core.automation_engine.common.logger import clean_log as log, get_platform_logger
 from core.automation_engine.common.tab_manager import open_new_tab
 
 from .utils import (
@@ -119,6 +119,7 @@ def click_instagram_post_option(driver, timeout=20):
 
 
 def post_to_instagram(driver, post):
+    error_log = get_platform_logger("instagram")
     try:
         caption = str(post.caption).strip()
         image_path = ""
@@ -237,8 +238,15 @@ def post_to_instagram(driver, post):
             }
 
         log("🖼 Uploading image...")
-        file_input.send_keys("\n".join(media_files))
-        medium_pause()
+        try:
+            file_input.send_keys("\n".join(media_files))
+            medium_pause()
+        except Exception:
+            error_log.exception("Instagram image upload failed")
+            return {
+                "success": False,
+                "message": "Instagram post failed.",
+            }
 
         if not click_next(driver):
             return {
@@ -326,15 +334,18 @@ def post_to_instagram(driver, post):
                 platform="instagram",
                 prefix="insta_caption_failed",
             )
+            error_log.error(f"Instagram caption typing failed | screenshot: {screenshot}")
             return {
                 "success": False,
-                "message": f"Caption typing failed | {screenshot}",
+                "message": "Instagram post failed..",
             }
+           
 
         log("📤 Sharing post...")
         share_btn = find_share_button(driver)
 
         if not share_btn:
+            error_log.error("Instagram share button not found")
             return {
                 "success": False,
                 "message": "Share button not found",
@@ -404,14 +415,16 @@ def post_to_instagram(driver, post):
         except Exception as e:
             log(f"❌ Failed to fetch post URL: {str(e)}")
 
+        error_log.info("No error generated while posting, posting is successfully done")
         return {
             "success": True,
             "message": "Instagram post successful",
             "post_url": post_url,
         }
 
-    except Exception as e:
+    except Exception:
+        error_log.exception("Instagram post automation failed")
         return {
             "success": False,
-            "message": str(e),
+            "message": "Instagram post failed.",
         }

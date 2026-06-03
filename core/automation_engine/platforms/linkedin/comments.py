@@ -13,6 +13,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 from apps.comments.ai_reply import generate_ai_reply
+from core.automation_engine.common.logger import get_platform_logger
 
 MY_PROFILE_ID = None
 PROCESSED_COMMENTS = set()
@@ -376,9 +377,10 @@ def submit_reply(driver, editor):
 # =========================================================
 
 def reply_linkedin_comment(driver, post_url, reply_text=None, author=None, comment_text=None):
+    error_log = get_platform_logger("linkedin")
 
     try:
-        log("📩 Comment detection task received")
+        log("LinkedIn comment reply task received")
 
         driver.get(post_url)
 
@@ -390,32 +392,26 @@ def reply_linkedin_comment(driver, post_url, reply_text=None, author=None, comme
 
         open_comment_section(driver)
 
-        log("🔄 Scrolling comments...")
+        log("Scrolling comments...")
         load_comments(driver)
 
         comment_element = None
-
         comments = get_top_level_comments(driver)
 
         for c in comments:
-
             try:
                 full_text = normalize(c.text)
 
                 if normalize(comment_text) in full_text:
                     comment_element = c
                     break
-
-            except:
+            except Exception:
                 pass
 
         if not comment_element:
-            return {
-                "success": False,
-                "message": "Target comment not found"
-            }
+            raise RuntimeError("Target comment not found")
 
-        log("💬 New comment found")
+        log("New comment found")
 
         if not reply_text:
             ai_data = generate_ai_reply(
@@ -428,24 +424,26 @@ def reply_linkedin_comment(driver, post_url, reply_text=None, author=None, comme
 
             reply_text = ai_data.get("reply") or "Thank you!"
 
-        log(f"🤖 Reply text: {reply_text}")
+        log(f"Reply text: {reply_text}")
 
         clicked = click_reply_button(driver, comment_element)
 
         if not clicked:
-            return {"success": False, "message": "Reply button not found"}
+            raise RuntimeError("Reply button not found")
 
         editor = type_reply(comment_element, reply_text)
 
         if not editor:
-            return {"success": False, "message": "Editor not found"}
+            raise RuntimeError("Editor not found")
 
         submitted = submit_reply(driver, editor)
 
         if not submitted:
-            return {"success": False, "message": "Submit failed"}
+            raise RuntimeError("Submit failed")
 
-        log("✅ Reply sent")
+        log("Reply sent")
+
+        error_log.info("No error generated during LinkedIn comment reply")
 
         return {
             "success": True,
@@ -453,13 +451,22 @@ def reply_linkedin_comment(driver, post_url, reply_text=None, author=None, comme
             "reply": reply_text
         }
 
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+    except Exception as exc:
+        error_log.exception("LinkedIn comment reply failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"LinkedIn comment reply failed: {clean_message}")
+
+        return {
+            "success": False,
+            "message": clean_message
+        }
 
 def check_linkedin_comments(driver, post_url):
+    error_log = get_platform_logger("linkedin")
 
     try:
-        log("📩 Checking LinkedIn comments...")
+        log("Checking LinkedIn comments...")
 
         driver.get(post_url)
 
@@ -469,22 +476,17 @@ def check_linkedin_comments(driver, post_url):
 
         time.sleep(2)
 
-        # Open comment section
         open_comment_section(driver)
 
-        # Load comments
-        log("🔄 Loading comments...")
+        log("Loading comments...")
         load_comments(driver)
 
         comments = []
-
-        # Use your existing logic
         comment_elements = get_top_level_comments(driver)
 
-        log(f"💬 Found {len(comment_elements)} comment elements")
+        log(f"Found {len(comment_elements)} comment elements")
 
         for comment in comment_elements:
-
             try:
                 full_text = normalize(comment.text)
 
@@ -510,7 +512,6 @@ def check_linkedin_comments(driver, post_url):
                 )
 
                 for sp in spans:
-
                     txt = normalize(sp.text)
 
                     if txt and txt not in ["reply", "like"] and len(txt) > 1:
@@ -525,15 +526,30 @@ def check_linkedin_comments(driver, post_url):
                     "text": comment_text
                 })
 
-                log(f"💬 Comment found: {comment_text}")
+                log(f"Comment found: {comment_text}")
 
-            except Exception as e:
-                print("COMMENT PARSE ERROR:", e)
+            except Exception as exc:
+                error_log.exception("LinkedIn comment parse failed")
+                log(f"LinkedIn comment parse failed: {_clean_error_message(exc)}")
 
-        log(f"✅ Total comments extracted: {len(comments)}")
+        log(f"Total comments extracted: {len(comments)}")
+
+        error_log.info("No error generated during LinkedIn comment detection")
 
         return comments
 
-    except Exception as e:
-        print("❌ CHECK COMMENT ERROR:", e)
+    except Exception as exc:
+        error_log.exception("LinkedIn comment detection failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"LinkedIn comment detection failed: {clean_message}")
+
         return []
+    
+def _clean_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+
+    if message:
+        return message.split("Stacktrace:")[0].strip()
+
+    return exc.__class__.__name__

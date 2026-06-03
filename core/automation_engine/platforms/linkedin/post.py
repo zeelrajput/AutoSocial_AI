@@ -12,8 +12,7 @@ from selenium.webdriver.common.by import By
 from core.automation_engine.common.tab_manager import open_new_tab
 from core.automation_engine.common.click_helper import safe_click
 from core.automation_engine.common.type_helper import type_like_human
-from core.automation_engine.common.logger import clean_log as log
-
+from core.automation_engine.common.logger import clean_log as log, get_platform_logger
 from .utils import (
     wait_for_linkedin_login,
     close_common_popups,
@@ -619,66 +618,49 @@ def get_latest_post_url_after_publish(driver, timeout=60):
     return None
 
 def post_to_linkedin(driver, post):
+    error_log = get_platform_logger("linkedin")
+
     try:
         caption = str(getattr(post, "caption", "")).strip()
 
         if not caption:
-            return {
-                "success": False,
-                "message": "Caption is empty",
-            }
+            raise RuntimeError("Caption is empty")
 
-        log("💼 Opening LinkedIn...")
+        log("Opening LinkedIn...")
         open_new_tab(driver, "https://www.linkedin.com/feed/")
         time.sleep(5)
 
         if not wait_for_linkedin_login(driver, timeout=180):
-            return {
-                "success": False,
-                "message": "Login timeout",
-            }
+            raise RuntimeError("Login timeout")
 
         close_common_popups(driver)
 
         time.sleep(3)
         close_common_popups(driver)
 
-        log("➕ Clicking Start Post button...")
+        log("Clicking Start Post button...")
         start_btn = find_start_post_button(driver)
 
         if not start_btn:
-            return {
-                "success": False,
-                "message": "Start Post button not found",
-            }
+            raise RuntimeError("Start Post button not found")
 
         if not open_linkedin_composer(driver, start_btn, timeout=12):
-            return {
-                "success": False,
-                "message": "LinkedIn composer did not open",
-            }
+            raise RuntimeError("LinkedIn composer did not open")
 
         textbox = find_linkedin_textbox(driver, timeout=20)
 
         if not textbox:
-            return {
-                "success": False,
-                "message": "Textbox not found",
-            }
+            raise RuntimeError("Textbox not found")
 
-        log("✍️ Adding caption...")
+        log("Adding caption...")
+
         if not type_caption(driver, textbox, caption):
-            return {
-                "success": False,
-                "message": "Caption typing failed",
-            }
+            raise RuntimeError("Caption typing failed")
 
-        log("🖼 Uploading image...")
+        log("Uploading image...")
+
         if not upload_media_if_present(driver, textbox, post):
-            return {
-                "success": False,
-                "message": "LinkedIn image upload failed",
-            }
+            raise RuntimeError("LinkedIn image upload failed")
 
         time.sleep(8)
 
@@ -692,36 +674,45 @@ def post_to_linkedin(driver, post):
 
         is_composer_open(driver, textbox)
 
-        log("📤 Sharing post...")
+        log("Sharing post...")
         posted = click_final_post_button(driver, textbox)
 
         if not posted:
-            return {
-                "success": False,
-                "message": "LinkedIn did not confirm the post submission",
-            }
+            raise RuntimeError("LinkedIn did not confirm the post submission")
 
         time.sleep(3)
 
-        if verify_linkedin_post_success(driver, timeout=8):
-            log("🔗 Getting LinkedIn post URL...")
-            post_url = get_latest_post_url_after_publish(driver, timeout=60)
-            log(f"🔗 LinkedIn post URL: {post_url}")
+        if not verify_linkedin_post_success(driver, timeout=8):
+            raise RuntimeError("Post trigger happened, but LinkedIn did not confirm success")
 
+        log("Getting LinkedIn post URL...")
+        post_url = get_latest_post_url_after_publish(driver, timeout=60)
+        log(f"LinkedIn post URL: {post_url}")
 
-            return {
-                "success": True,
-                "message": "Post submitted successfully",
-                "post_url": post_url,
-            }
+        error_log.info("No error generated during LinkedIn post")
+
+        return {
+            "success": True,
+            "message": "Post submitted successfully",
+            "post_url": post_url,
+        }
+
+    except Exception as exc:
+        error_log.exception("LinkedIn post failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"LinkedIn post failed: {clean_message}")
 
         return {
             "success": False,
-            "message": "Post trigger happened, but LinkedIn did not confirm success",
+            "message": clean_message,
         }
+    
 
-    except Exception as e:
-        return {
-            "success": False,
-            "message": str(e),
-        }
+def _clean_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+
+    if message:
+        return message.split("Stacktrace:")[0].strip()
+
+    return exc.__class__.__name__

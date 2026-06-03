@@ -1,10 +1,10 @@
 
 import re
 import time
-
+import traceback
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-
+from core.automation_engine.common.logger import clean_log as log, get_platform_logger
 from apps.comments.ai_reply import generate_ai_reply
 
 
@@ -143,8 +143,10 @@ def scroll_to_latest_comment_after_view_more(driver):
         time.sleep(1)
 
 def check_facebook_comments(driver, post_url):
+    error_log = get_platform_logger("facebook")
+
     try:
-        print("Opening Facebook post:", post_url)
+        log(f"Opening Facebook post: {post_url}")
 
         driver.get(post_url)
         time.sleep(8)
@@ -155,14 +157,14 @@ def check_facebook_comments(driver, post_url):
 
         scroll_facebook_comments_panel(driver)
         time.sleep(3)
-            
+
         click_view_more_comments(driver, max_clicks=5)
 
         scroll_to_latest_comment_after_view_more(driver)
         time.sleep(2)
 
-        print("CURRENT URL:", driver.current_url)
-        print("PAGE TITLE:", driver.title)
+        log(f"CURRENT URL: {driver.current_url}")
+        log(f"PAGE TITLE: {driver.title}")
 
         body_text = driver.find_element(By.TAG_NAME, "body").text
         lines = [line.strip() for line in body_text.splitlines() if line.strip()]
@@ -180,6 +182,8 @@ def check_facebook_comments(driver, post_url):
             "View previous comments",
             "See more",
             "Facebook",
+            "Online status indicator",
+            "Active",
         }
 
         comments = []
@@ -208,6 +212,20 @@ def check_facebook_comments(driver, post_url):
             author = line
             comment_text = next_line
 
+            bad_values = {
+                "Online status indicator",
+                "Active",
+                "Like",
+                "Reply",
+                "Share",
+                "Comment",
+                "Comments",
+                "Facebook",
+            }
+
+            if author.strip() in bad_values or comment_text.strip() in bad_values:
+                continue
+
             if not author or not comment_text:
                 continue
 
@@ -230,19 +248,24 @@ def check_facebook_comments(driver, post_url):
                 "text": comment_text,
             })
 
-            print("✅ Facebook comment detected")
-            print("AUTHOR:", author)
-            print("TEXT:", comment_text)
+            log("Facebook comment detected")
+            log(f"AUTHOR: {author}")
+            log(f"TEXT: {comment_text}")
 
-        print("TOTAL FACEBOOK COMMENTS:", len(comments))
+        log(f"TOTAL FACEBOOK COMMENTS: {len(comments)}")
+
+        error_log.info("No error generated during Facebook comment detection")
         return comments
 
     except Exception as exc:
-        print("Facebook comment check failed:", exc)
+        error_log.exception("Facebook comment detection failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"Facebook comment detection failed: {clean_message}")
         return []
 
-
 def click_reply_button(driver, comment_text):
+
     comment_xpath = f"//*[normalize-space()={xpath_literal(comment_text)}]"
 
     for _ in range(8):
@@ -305,9 +328,9 @@ def type_and_send_reply(driver, reply_text):
         contenteditable = reply_box.get_attribute("contenteditable")
         aria_label = reply_box.get_attribute("aria-label") or ""
 
-        print("ACTIVE ELEMENT ROLE:", role)
-        print("ACTIVE ELEMENT CONTENTEDITABLE:", contenteditable)
-        print("ACTIVE ELEMENT ARIA:", aria_label)
+        # print("ACTIVE ELEMENT ROLE:", role)
+        # print("ACTIVE ELEMENT CONTENTEDITABLE:", contenteditable)
+        # print("ACTIVE ELEMENT ARIA:", aria_label)
     except Exception:
         pass
 
@@ -383,15 +406,13 @@ def type_and_send_reply(driver, reply_text):
 
 
 def reply_facebook_comment(driver, post_url, reply_text=None):
+    error_log = get_platform_logger("facebook")
+
     try:
         comments = check_facebook_comments(driver, post_url)
 
         if not comments:
-            return {
-                "success": False,
-                "message": "No Facebook comments found",
-                "replied": [],
-            }
+            raise RuntimeError("No Facebook comments found")
 
         newest_comment = comments[-1]
         author = newest_comment["author"]
@@ -400,20 +421,19 @@ def reply_facebook_comment(driver, post_url, reply_text=None):
         ai_reply = get_ai_reply_text(comment_text, reply_text)
 
         if not ai_reply:
-            return {
-                "success": False,
-                "message": "AI reply not generated",
-                "replied": [],
-            }
+            raise RuntimeError("AI reply not generated")
 
-        print("🤖 AI reply generated:")
-        print("COMMENT:", comment_text)
-        print("REPLY:", ai_reply)
+        log("AI reply generated:")
+        log(f"COMMENT: {comment_text}")
+        log(f"REPLY: {ai_reply}")
 
         click_reply_button(driver, comment_text)
         safe_reply = type_and_send_reply(driver, ai_reply)
 
-        print("✅ Replied to newest Facebook comment")
+        log("Reply to that comment successfully done.")
+        log("Replied to newest Facebook comment")
+
+        error_log.info("No error generated during Facebook comment reply")
 
         return {
             "success": True,
@@ -428,11 +448,21 @@ def reply_facebook_comment(driver, post_url, reply_text=None):
         }
 
     except Exception as exc:
-        print("Facebook reply failed:", exc)
+        error_log.exception("Facebook comment reply failed")
+        clean_message = _clean_error_message(exc)
+
+        log(f"Facebook comment reply failed: {clean_message}")
+
         return {
             "success": False,
-            "message": str(exc),
+            "message": clean_message,
             "replied": [],
         }
     
-    
+def _clean_error_message(exc: Exception) -> str:
+    message = str(exc).strip()
+
+    if message:
+        return message.split("Stacktrace:")[0].strip()
+
+    return exc.__class__.__name__
